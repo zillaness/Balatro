@@ -1,0 +1,93 @@
+<!doctype html>
+<!--METADATA-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Balatro Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<header>
+  <h1>Balatro Calculator</h1>
+  <span class="muted">best plays, joker order, hand levels</span>
+  <div class="actions">
+    <button class="blue" data-act="load-save" title="Load jokers, hand, levels, and deck from Balatro's save.jkr">Load save</button>
+    <button data-act="save-help" title="Where to find save.jkr">?</button>
+    <button data-act="open-picker">+ Add joker <kbd>/</kbd></button>
+    <button data-act="open-settings">Settings</button>
+  </div>
+  <input type="file" id="save-file" accept=".jkr" hidden>
+</header>
+<div id="run-strip" hidden></div>
+
+<main>
+  <section id="jokers-panel" class="panel">
+    <div class="panel-head">
+      <h2>Jokers <span id="joker-count" class="muted"></span></h2>
+      <span class="muted">click to edit · drag to reorder · drag off to remove</span>
+      <span class="spacer"></span>
+      <button class="blue" data-act="optimize" title="Try joker orders and find the one that scores most">Optimize order</button>
+      <button data-act="open-picker">+ Add joker</button>
+    </div>
+    <div id="joker-row" class="row"></div>
+    <div id="order-result"></div>
+  </section>
+
+  <section id="hand-panel" class="panel">
+    <div class="panel-head">
+      <h2>Hand <span id="hand-count" class="muted"></span></h2>
+      <span class="muted">click a card to change it · drag to reorder · outlined = cards to play</span>
+      <span class="spacer"></span>
+      <button data-act="clear-hand">Clear hand</button>
+    </div>
+    <div id="hand-row" class="row"></div>
+    <div id="entry"></div>
+  </section>
+
+  <section id="plays-panel" class="panel">
+    <div class="panel-head"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span></div>
+    <div id="plays"></div>
+  </section>
+
+  <aside id="levels-panel" class="panel">
+    <div class="panel-head"><h2>Hand levels</h2><span class="spacer"></span><button class="blue" data-act="black-hole" title="Black Hole: +1 level to every hand">Black Hole</button></div>
+    <div id="levels"></div>
+  </aside>
+</main>
+
+<footer>
+  Scoring engine by Saffron Haas (<a href="https://github.com/EFHIII/balatro-calculator">EFHIII/balatro-calculator</a>, MIT).
+  Balatro art by LocalThunk. m6x11 font by managore. Tiers are an opinion.
+</footer>
+
+<div id="scrim" class="scrim" hidden></div>
+
+<div id="picker" class="drawer" hidden>
+  <div class="drawer-head">
+    <input id="picker-search" type="search" placeholder="Search name, rules, or what it looks like: banana, green dice, crown…" autocomplete="off">
+    <button data-act="close-picker">Close <kbd>Esc</kbd></button>
+  </div>
+  <div id="picker-tiers" class="filters"></div>
+  <div class="drawer-body"><div id="picker-grid"></div></div>
+</div>
+
+<div id="settings" class="drawer" hidden>
+  <div class="drawer-head"><h2>Settings</h2><span class="spacer" style="flex:1"></span><button data-act="close-settings">Close <kbd>Esc</kbd></button></div>
+  <div id="settings-body" class="drawer-body"></div>
+</div>
+
+<div id="popover" hidden></div>
+<div id="info" class="info" hidden></div>
+<div id="trash" hidden>Drop here to remove</div>
+<div id="toast" hidden></div>
+<div id="drop-overlay" hidden><div>Drop <b>save.jkr</b> to load your run</div></div>
+
+<!--WORKER-->
+<!--SCRIPTS-->
+</body>
+</html>
+<!--CHANGELOG-->
