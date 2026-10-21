@@ -1,6 +1,6 @@
 ---
 file: README.md
-version: 1.2
+version: 1.2.1
 author: Sam Cao
 created: 2026-10-21
 last_updated: 2026-10-21
@@ -31,10 +31,10 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 
 | | |
 | --- | --- |
-| Windows | paste `%AppData%\Balatro\1` into File Explorer's address bar |
-| Mac | Finder, Go, Go to Folder: `~/Library/Application Support/Balatro/1` |
+| Windows | usually `C:\Users\<you>\AppData\Roaming\Balatro\1`. AppData is hidden, so paste `%AppData%\Balatro\1` into File Explorer's address bar |
+| Mac | usually `~/Library/Application Support/Balatro/1`. Library is hidden, so use Finder, Go, Go to Folder |
 
-`1` is the profile number. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
+`1` is the profile number. Hover any save button on the page for the same paths. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
 
 ## Build and test
 
@@ -65,3 +65,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 - v1.0.1 (2026-10-21): Site address uses the repo's capital B (/Balatro/); Pages paths are case-sensitive.
 - v1.1 (2026-10-21): Discard advice and the save drop box.
 - v1.2 (2026-10-21): Discards named in text; minimizable sections.
+- v1.2.1 (2026-10-21): Typical save paths, and that AppData and Library are hidden folders.

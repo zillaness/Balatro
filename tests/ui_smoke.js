@@ -160,6 +160,8 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
   // A visible drop box for save.jkr before any save is loaded.
   check(/Drop save\.jkr here/.test(await page.$eval('#run-strip', e => e.innerText)), 'save drop box shows on the page');
+  const tips = await page.$$eval('#run-strip, #run-strip [data-act=load-save], header [data-act=load-save], header [data-act=save-help]', els => els.map(e => e.title));
+  check(tips.every(t => /AppData\\Roaming\\Balatro\\1/.test(t) && /AppData is hidden/.test(t) && /Library is hidden/.test(t)), 'save buttons and drop box say where save.jkr usually is, and that the folders are hidden', tips[0]);
 
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');

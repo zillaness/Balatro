@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
-  file: index.html (Balatro Calculator v1.6)
-  version: 1.6
+  file: index.html (Balatro Calculator v1.6.1)
+  version: 1.6.1
   author: Sam Cao
   created: 2026-10-21
   last_updated: 2026-10-21
@@ -4772,6 +4772,15 @@ const Sprites = (() => {
   const uid = () => Math.random().toString(36).slice(2, 10);
   const canHover = matchMedia('(hover: hover)').matches;
 
+  // Hover text for every save button and the drop box. AppData and ~/Library are hidden folders, which is why people can't find them.
+  const SAVE_WHERE_TEXT = `save.jkr is usually in:
+Windows: C:\\Users\\<you>\\AppData\\Roaming\\Balatro\\1
+  AppData is hidden. Paste %AppData%\\Balatro\\1 into File Explorer's address bar.
+Mac: ~/Library/Application Support/Balatro/1
+  Library is hidden. In Finder: Go, Go to Folder.
+(1 is your profile number.)`;
+  const SAVE_WHERE = esc(SAVE_WHERE_TEXT);
+
   const SUIT_SYMBOL = { h: '♥', c: '♣', d: '♦', s: '♠' };
   const RANK_KEYS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
   const ENHANCEMENTS = ['bonus', 'mult', 'wild', 'glass', 'steel', 'stone', 'gold', 'lucky'];
@@ -5155,17 +5164,18 @@ const Sprites = (() => {
     const r = state.run;
     box.hidden = false;
     box.classList.toggle('empty', !r || !!r.error);
+    box.title = !r || r.error ? SAVE_WHERE_TEXT : '';
     if (!r) {
       box.innerHTML = `<span class="drop-icon" aria-hidden="true">⇩</span>
         <span><b>Drop save.jkr here</b> to load your run <span class="muted">(jokers, hand, levels, deck, blind)</span></span>
         <span class="spacer"></span>
-        <button class="blue" data-act="load-save">Choose save.jkr</button>
-        <button data-act="save-help">Where is it?</button>`;
+        <button class="blue" data-act="load-save" title="${SAVE_WHERE}">Choose save.jkr</button>
+        <button data-act="save-help" title="${SAVE_WHERE}">Where is it?</button>`;
       return;
     }
     if (r.error) {
       box.innerHTML = `<span class="mult-c">Couldn't read ${esc(r.file)}: ${esc(r.error)}</span>
-        <span class="spacer"></span><button class="blue" data-act="load-save">Choose save.jkr</button><button data-act="save-help">Where is it?</button><button data-act="run-close">Dismiss</button>`;
+        <span class="spacer"></span><button class="blue" data-act="load-save" title="${SAVE_WHERE}">Choose save.jkr</button><button data-act="save-help" title="${SAVE_WHERE}">Where is it?</button><button data-act="run-close">Dismiss</button>`;
       return;
     }
     const bits = [
@@ -5177,16 +5187,19 @@ const Sprites = (() => {
     ].filter(Boolean);
     box.innerHTML = `<span class="muted">${esc(r.file)} · loaded ${ago(r.loadedAt)}</span> ${bits.map(b => `<span>${b}</span>`).join('<span class="muted">·</span>')}
       ${r.warnings?.length ? `<span class="mult-c">${r.warnings.map(esc).join('; ')}</span>` : ''}
-      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button class="blue" data-act="load-save" title="Opens the file picker. Windows reopens the Balatro folder you used last, so double-click save.jkr. (Browsers can't re-read AppData by themselves.)">Reload save</button><button data-act="run-close" title="Forget this save">✕</button>`;
+      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button class="blue" data-act="load-save" title="Opens the file picker. Windows reopens the Balatro folder you used last, so double-click save.jkr. (Browsers can't re-read AppData by themselves.)&#10;&#10;${SAVE_WHERE}">Reload save</button><button data-act="run-close" title="Forget this save">✕</button>`;
   }
 
   function saveHelpHtml() {
     return `<h2>Load your run from save.jkr</h2>
       <p>Balatro saves your current run as <b>save.jkr</b> in your profile folder. The calculator only reads it.</p>
-      <p><b>Windows:</b> press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%AppData%\\Balatro\\1</code>, and press Enter. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.
+      <p><b>Windows:</b> usually <code>C:\\Users\\<i>you</i>\\AppData\\Roaming\\Balatro\\1\\save.jkr</code>.
+        <b>AppData is a hidden folder</b>, so it won't show up if you click through your user folder.
+        Press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%AppData%\\Balatro\\1</code>, and press Enter. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.
         Or click Choose save.jkr and paste <code>%AppData%\\Balatro\\1\\save.jkr</code> into the File name box.
         (<code>1</code> is your profile; use 2 or 3 if you play on another.)</p>
-      <p><b>Mac:</b> in Finder choose Go, Go to Folder, and paste <code>~/Library/Application Support/Balatro/1</code>.</p>
+      <p><b>Mac:</b> usually <code>~/Library/Application Support/Balatro/1/save.jkr</code>. <b>Library is hidden in Finder too</b>:
+        choose Go, Go to Folder (<kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd>), and paste <code>~/Library/Application Support/Balatro/1</code>.</p>
       <p>Drag <b>save.jkr</b> onto this page, or choose it below. Pin the folder in Quick Access (Windows) or the Finder sidebar (Mac) so it's one click next time.
         Load it again after each hand to pick up new cards.</p>
       <p class="muted">Phone, Switch, and console saves can't be opened from a browser.</p>
@@ -5413,7 +5426,7 @@ const Sprites = (() => {
     const row = $('#joker-row');
     $('#joker-count').textContent = state.jokers.length ? `${state.jokers.length}` : '';
     if (!state.jokers.length) {
-      row.innerHTML = `<div class="empty-hint">No jokers yet. <button data-act="open-picker">+ Add joker</button>, press <kbd>/</kbd>, or drop your <b>save.jkr</b> here to load your run (<button data-act="save-help">where is it?</button>)</div>`;
+      row.innerHTML = `<div class="empty-hint">No jokers yet. <button data-act="open-picker">+ Add joker</button>, press <kbd>/</kbd>, or drop your <b>save.jkr</b> here to load your run (<button data-act="save-help" title="${SAVE_WHERE}">where is it?</button>)</div>`;
       return;
     }
     row.innerHTML = state.jokers.map((j, i) => {
@@ -6303,6 +6316,8 @@ const Sprites = (() => {
     renderEntry();
     renderPlays();
     renderRun();
+    $('header [data-act=load-save]').title = `Load jokers, hand, levels, and deck from Balatro's save.jkr.\n\n${SAVE_WHERE_TEXT}`;
+    $('header [data-act=save-help]').title = SAVE_WHERE_TEXT;
     applyCollapsed();
     changed();
   }
@@ -6331,4 +6346,5 @@ const Sprites = (() => {
   v1.5 (2026-10-21): Discard advice: compares playing now with sensible discards by simulating the rest of the blind from your draw pile; shows chance to clear, next-hand odds, and outlines the cards to discard. Chips, hands, and discards come from the save. Verified on a real save.
   v1.5.1 (2026-10-21): Advice names the cards to discard and to keep, and outlines the discards in red in your hand.
   v1.6 (2026-10-21): Cards written out as text in advice and best plays. Sections can be minimized (remembered). Fixed advice running twice when chips needed was edited.
+  v1.6.1 (2026-10-21): Hovering the save buttons or the drop box shows where save.jkr usually is, and the help says AppData (Windows) and Library (Mac) are hidden folders.
 -->
