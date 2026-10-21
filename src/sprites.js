@@ -1,6 +1,6 @@
 /**
  * @file sprites.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -36,7 +36,8 @@ const Sprites = (() => {
     const rank = BalatroAdapter.RANKS.indexOf(BalatroAdapter.normalizeRank(c.rank));
     const suit = BalatroAdapter.SUITS.indexOf(c.suit);
     let html = cell('enh', ENHANCEMENT[c.enhancement || 'none']);
-    if (c.enhancement !== 'stone') html += cell('deck', [rank, suit]);
+    // No suit yet: show the rank and a question mark instead of a face.
+    if (c.enhancement !== 'stone') html += suit < 0 ? `<i class="nosuit"><b>${BalatroAdapter.normalizeRank(c.rank)}</b><em>?</em></i>` : cell('deck', [rank, suit]);
     if (c.seal) html += cell('enh', SEAL[c.seal]);
     html += editionLayers(c.edition, c.debuffed);
     const cls = 'card' + (c.edition === 'negative' ? ' negative' : '');
@@ -58,4 +59,5 @@ const Sprites = (() => {
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Layered card and joker sprites with enhancements, seals, editions, debuff, and legendary soul layers.
+ * v1.1 (2026-10-21): Cards without a suit show their rank and a question mark.
  */

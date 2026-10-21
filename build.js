@@ -13,14 +13,16 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.3';
+const VERSION = '1.4';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
   ['1.0', '2026-10-21', 'First build: main screen, card entry, joker picker with appearance search and tiers, editors, drag and drop, best plays, hand levels.'],
   ['1.1', '2026-10-21', 'Optimize order button: exact search up to 7 jokers across background workers, hill climbing for 8+, sample hands when no hand is entered. Click a play to outline its cards.'],
   ['1.2', '2026-10-21', 'Load save: drag save.jkr onto the page or choose it to load jokers (editions, counters, sell values), hand, hand levels, deck, blind, and boss flags. Read-only.'],
-  ['1.3', '2026-10-21', 'Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.']
+  ['1.3', '2026-10-21', 'Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.'],
+  ['1.3.1', '2026-10-21', 'Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.'],
+  ['1.4', '2026-10-21', 'Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only).']
 ];
 
 const ROOT = __dirname;

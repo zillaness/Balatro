@@ -20,7 +20,9 @@
   const SUIT_SYMBOL = { h: '♥', c: '♣', d: '♦', s: '♠' };
   const RANK_KEYS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
   const ENHANCEMENTS = ['bonus', 'mult', 'wild', 'glass', 'steel', 'stone', 'gold', 'lucky'];
-  const EDITIONS = ['foil', 'holo', 'poly', 'negative'];
+  // Negative exists only on jokers (and consumables), never on playing cards.
+  const CARD_EDITIONS = ['foil', 'holo', 'poly'];
+  const JOKER_EDITIONS = ['foil', 'holo', 'poly', 'negative'];
   const SEALS = ['gold', 'red', 'blue', 'purple'];
   const MOD_LABEL = {
     bonus: 'Bonus', mult: 'Mult', wild: 'Wild', glass: 'Glass', steel: 'Steel', stone: 'Stone', gold: 'Gold', lucky: 'Lucky',
@@ -135,9 +137,12 @@
     };
   }
 
+  // Cards whose suit isn't set yet are scored as rotating suits (H, C, D, S), so they never make a flush.
+  const ROTATE = ['h', 'c', 'd', 's'];
   function engineState() {
+    let k = 0;
     return A.encodeState({
-      hand: state.hand,
+      hand: state.hand.map(c => (c.suit ? c : { ...c, suit: ROTATE[k++ % 4] })),
       jokers: state.jokers.map(j => ({ id: j.id, value: j.value, edition: j.edition, sell: j.sell, debuffed: j.debuffed })),
       levels: state.levels,
       flags: state.flags
@@ -355,7 +360,7 @@
       state.flags = r.flags;
       state.run = { ...r.run, file: file.name, loadedAt: Date.now(), fileTime: file.lastModified || null, warnings: r.warnings };
       opt.result = null;
-      resetPending();
+      resetEntry();
       renderEntry();
       renderOrderResult();
       changed();
@@ -460,7 +465,7 @@
 
   function cardText(c) {
     const mods = [c.enhancement, c.edition, c.seal && c.seal + ' seal', c.debuffed && 'debuffed'].filter(Boolean);
-    return `${A.normalizeRank(c.rank)}${SUIT_SYMBOL[c.suit]}${mods.length ? ' ' + mods.join(', ') : ''}`;
+    return `${A.normalizeRank(c.rank)}${c.suit ? SUIT_SYMBOL[c.suit] : '?'}${mods.length ? ' ' + mods.join(', ') : ''}`;
   }
 
   // ---------- joker row ----------
@@ -501,10 +506,10 @@
     const row = $('#hand-row');
     $('#hand-count').textContent = state.hand.length ? `${state.hand.length}` : '';
     if (!state.hand.length) {
-      row.innerHTML = `<div class="empty-hint">Type a card, e.g. <kbd>K</kbd> <kbd>h</kbd> <kbd>Enter</kbd>, or use the buttons below.</div>`;
+      row.innerHTML = `<div class="empty-hint">Type ranks to add cards (<kbd>K</kbd> <kbd>Q</kbd> <kbd>7</kbd>), with a suit if you know it (<kbd>K</kbd> <kbd>h</kbd>), or paste a hand like <kbd>AH KC 10D</kbd>. Set suits and modifiers later by clicking a card.</div>`;
       return;
     }
-    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
+    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
   }
 
   // ---------- card entry ----------
@@ -513,7 +518,7 @@
     ['glass', 'enhancement', 'glass'], ['gold', 'enhancement', 'gold'], ['steel', 'enhancement', 'steel'],
     ['stone', 'enhancement', 'stone'], ['bonus', 'enhancement', 'bonus'], ['mult', 'enhancement', 'mult'],
     ['wild', 'enhancement', 'wild'], ['lucky', 'enhancement', 'lucky'],
-    ['foil', 'edition', 'foil'], ['holo', 'edition', 'holo'], ['poly', 'edition', 'poly'], ['negative', 'edition', 'negative'],
+    ['foil', 'edition', 'foil'], ['holo', 'edition', 'holo'], ['poly', 'edition', 'poly'],
     ['red', 'seal', 'red'], ['blue', 'seal', 'blue'], ['purple', 'seal', 'purple'], ['goldseal', 'seal', 'gold'],
     ['debuffed', 'debuffed', true]
   ];
@@ -525,90 +530,126 @@
     return MOD_WORDS.find(([k]) => k.startsWith(w)) || null;
   }
 
-  const pending = { rank: null, suit: null, mods: {}, word: '', tenStarted: false };
+  // Each rank typed or tapped adds a card at once. The suit, enhancement, edition, and seal that follow
+  // apply to that card (the "current" one) until another rank starts the next card. Suits can be left
+  // for later: click the card in the hand to set them.
+  const entry = { uid: null, word: '', tenStarted: false };
+  const current = () => state.hand.find(c => c.uid === entry.uid) || null;
 
-  function pendingMods() {
-    const mods = { ...pending.mods };
-    const r = resolveWord(pending.word);
-    if (r) mods[r[1]] = r[2];
-    return mods;
-  }
+  function resetEntry() { entry.uid = null; entry.word = ''; entry.tenStarted = false; }
 
+  // Typed modifier word -> applied to the current card.
   function applyWord() {
-    const r = resolveWord(pending.word);
-    if (r) pending.mods[r[1]] = r[2];
-    pending.word = '';
+    const c = current();
+    const r = resolveWord(entry.word);
+    if (c && r) c[r[1]] = r[2];
+    entry.word = '';
   }
 
-  function resetPending() {
-    pending.rank = null; pending.suit = null; pending.mods = {}; pending.word = ''; pending.tenStarted = false;
+  function newCard(rank, suit = null, mods = {}) {
+    return { uid: uid(), rank, suit, enhancement: mods.enhancement || null, edition: mods.edition || null, seal: mods.seal || null, debuffed: !!mods.debuffed };
   }
 
-  function commitPending() {
-    if (!pending.rank || !pending.suit) return false;
-    if (state.hand.length >= MAX_HAND) { toast(`Hand is full (${MAX_HAND} cards)`); return false; }
+  function addRank(rank) {
     applyWord();
-    const m = pending.mods;
-    state.hand.push({
-      uid: uid(), rank: pending.rank, suit: pending.suit,
-      enhancement: m.enhancement || null, edition: m.edition || null, seal: m.seal || null, debuffed: !!m.debuffed
-    });
-    resetPending();
+    if (state.hand.length >= MAX_HAND) { toast(`Hand is full (${MAX_HAND} cards)`); return; }
+    const c = newCard(rank);
+    state.hand.push(c);
+    entry.uid = c.uid;
+    entry.tenStarted = rank === '10';
     changed();
-    renderEntry();
-    return true;
-  }
-
-  function setRank(rank) {
-    if (pending.rank && pending.suit) commitPending();
-    pending.rank = rank; pending.suit = null; pending.mods = {}; pending.word = '';
-    pending.tenStarted = rank === '10';
     renderEntry();
   }
 
   function setSuit(suit) {
-    if (!pending.rank) { toast('Pick a rank first'); return; }
-    pending.suit = suit;
-    pending.tenStarted = false;
+    const c = current();
+    if (!c) { toast('Add a card first: tap a rank'); return; }
+    c.suit = suit;
+    entry.tenStarted = false;
+    changed();
     renderEntry();
   }
 
   function toggleMod(group, value) {
     applyWord();
-    pending.mods[group] = pending.mods[group] === value ? null : value;
+    const c = current();
+    if (!c) { toast('Add a card first: tap a rank'); return; }
+    c[group] = c[group] === value ? (group === 'debuffed' ? false : null) : value;
+    changed();
     renderEntry();
+  }
+
+  function finishCard() {
+    applyWord();
+    resetEntry();
+    changed();
+    renderEntry();
+  }
+
+  // "AH, KC, QD, JS, 10C" -> cards. A token is rank, optional suit, optional :modifiers joined by +
+  // (KH:glass+red). Missing suits are allowed and set later.
+  const SUIT_CHARS = { h: 'h', c: 'c', d: 'd', s: 's', '♥': 'h', '♣': 'c', '♦': 'd', '♠': 's' };
+  function parseHandText(text) {
+    const cards = [];
+    const bad = [];
+    for (const t of text.split(/[\s,;]+/).filter(Boolean)) {
+      const m = /^(10|[2-9tjqka])([hcds♥♣♦♠])?(?:[:/](.+))?$/i.exec(t);
+      if (!m) { bad.push(t); continue; }
+      const mods = {};
+      for (const w of (m[3] || '').split('+').filter(Boolean)) {
+        let word = w.toLowerCase();
+        if (word.endsWith('seal') && word !== 'goldseal') word = word.slice(0, -4);
+        const r = resolveWord(word);
+        if (r) mods[r[1]] = r[2]; else bad.push(t);
+      }
+      cards.push(newCard(A.normalizeRank(m[1]), m[2] ? SUIT_CHARS[m[2].toLowerCase()] : null, mods));
+    }
+    return { cards, bad };
+  }
+
+  function addHandText(text) {
+    const { cards, bad } = parseHandText(text);
+    const room = MAX_HAND - state.hand.length;
+    if (!cards.length) { toast(bad.length ? `Couldn't read ${bad.join(' ')}. Try AH, KC, 10D` : 'Nothing to add'); return false; }
+    state.hand.push(...cards.slice(0, room));
+    resetEntry();
+    changed();
+    renderEntry();
+    const notes = [];
+    if (cards.length > room) notes.push(`hand is full, ${cards.length - room} left out`);
+    if (bad.length) notes.push(`couldn't read ${bad.join(' ')}`);
+    toast(`Added ${Math.min(cards.length, room)} cards${notes.length ? '; ' + notes.join('; ') : ''}`);
+    return true;
   }
 
   // Returns true when the key was used for card entry.
   function entryKey(key) {
     const k = key.length === 1 ? key.toLowerCase() : key;
-    const suitSet = pending.rank && pending.suit;
+    const c = current();
 
-    if (k === 'Enter') { if (suitSet) commitPending(); else if (pending.rank) toast('Pick a suit: s h d c'); return true; }
+    if (k === 'Enter') { if (c) finishCard(); return true; }
     if (k === 'Backspace') {
-      if (pending.word) pending.word = pending.word.slice(0, -1);
-      else if (Object.values(pending.mods).some(Boolean)) pending.mods = {};
-      else if (pending.suit) pending.suit = null;
-      else if (pending.rank) pending.rank = null;
+      if (entry.word) entry.word = entry.word.slice(0, -1);
+      else if (c && (c.enhancement || c.edition || c.seal || c.debuffed)) { c.enhancement = c.edition = c.seal = null; c.debuffed = false; changed(); }
+      else if (c && c.suit) { c.suit = null; changed(); }
+      else if (c) { state.hand.splice(state.hand.indexOf(c), 1); resetEntry(); changed(); }
       else if (state.hand.length) { state.hand.pop(); changed(); }
       renderEntry();
       return true;
     }
-    if (k === ' ') { if (suitSet) { applyWord(); renderEntry(); return true; } return false; }
+    if (k === ' ') { if (c) { applyWord(); changed(); renderEntry(); return true; } return false; }
 
-    if (k === '0' && pending.tenStarted) { pending.tenStarted = false; return true; }
+    if (k === '0' && entry.tenStarted) { entry.tenStarted = false; return true; }
     const rank = { a: 'A', k: 'K', q: 'Q', j: 'J', t: '10', '1': '10', '0': '10' }[k] || (/^[2-9]$/.test(k) ? k : null);
-    // A rank key starts the next card, unless it continues a modifier word ("gla" + "s"... "luc" + "k").
-    const continuesWord = suitSet && pending.word && /^[a-z]$/.test(k) && resolveWord(pending.word + k);
-    if (rank && !continuesWord) { applyWord(); setRank(rank); return true; }
+    // A rank key adds the next card, unless it continues a modifier word ("gla" + "s"... "luc" + "k").
+    const continuesWord = c && entry.word && /^[a-z]$/.test(k) && resolveWord(entry.word + k);
+    if (rank && !continuesWord) { addRank(rank); return true; }
 
-    if (pending.rank && !pending.suit && 'shdc'.includes(k) && k.length === 1) { setSuit(k); return true; }
+    if (c && !c.suit && !entry.word && SUIT_CHARS[k]) { setSuit(SUIT_CHARS[k]); return true; }
 
-    if (suitSet && /^[a-z]$/.test(k)) {
-      const next = pending.word + k;
-      if (resolveWord(next)) pending.word = next;
-      else if (k === 'c' && !pending.word) pending.suit = k;
-      else pending.word = next;
+    if (c && /^[a-z]$/.test(k)) {
+      entry.word += k;
+      entry.tenStarted = false;
       renderEntry();
       return true;
     }
@@ -616,25 +657,33 @@
   }
 
   function renderEntry() {
-    const mods = pendingMods();
-    const btn = (act, val, label, on, cls = '') => `<button data-act="${act}" data-v="${val}" class="${on ? 'on ' : ''}${cls}">${label}</button>`;
-    // Tiles preview the card being entered (an Ace of Spades until a rank and suit are picked).
-    const sample = { rank: pending.rank || 'A', suit: pending.suit || 's' };
+    const c = current();
+    const live = c ? { ...c } : null;
+    const r = resolveWord(entry.word);
+    if (live && r) live[r[1]] = r[2];
+    const btn = (act, val, label, on, cls = '') => `<button data-act="${act}" data-v="${val}" class="${on ? 'on ' : ''}${cls}"${!c && act !== 'rank' ? ' disabled' : ''}>${label}</button>`;
+    // Tiles preview the current card (an Ace of Spades until there is one).
+    const sample = live || { rank: 'A', suit: 's' };
+    const t = (val, label, on, card) => c ? tile('mod', val, label, on, Sprites.card(card)) : tile('mod', val, label, false, Sprites.card(card)).replace('<button', '<button disabled');
     const box = $('#entry');
     box.innerHTML = `
-      <div class="btn-row"><span class="label">Rank</span>${RANK_KEYS.map(r => btn('rank', r, r, pending.rank === r)).join('')}</div>
-      <div class="btn-row"><span class="label">Suit</span>${A.SUITS.map(s => btn('suit', s, SUIT_SYMBOL[s] + ' ' + A.SUIT_NAMES[A.SUITS.indexOf(s)], pending.suit === s, 'suit-' + s)).join('')}</div>
-      <div class="btn-row"><span class="label">Enhance</span>${ENHANCEMENTS.map(e => tile('mod', 'enhancement:' + e, MOD_LABEL[e], mods.enhancement === e, Sprites.card({ ...sample, enhancement: e }))).join('')}</div>
-      <div class="btn-row"><span class="label">Edition</span>${EDITIONS.map(e => tile('mod', 'edition:' + e, MOD_LABEL[e], mods.edition === e, Sprites.card({ ...sample, edition: e }))).join('')}</div>
-      <div class="btn-row"><span class="label">Seal</span>${SEALS.map(e => tile('mod', 'seal:' + e, MOD_LABEL[e], mods.seal === e, Sprites.card({ ...sample, seal: e }))).join('')}${tile('mod', 'debuffed:true', 'Debuffed', mods.debuffed, Sprites.card({ ...sample, debuffed: true }))}</div>
-      <div id="entry-preview">
-        ${pending.rank && pending.suit ? Sprites.card({ rank: pending.rank, suit: pending.suit, ...mods }) : ''}
-        <span id="entry-text">${pending.rank ? esc(pending.rank + (pending.suit ? SUIT_SYMBOL[pending.suit] : ' …pick a suit')) : '<span class="muted">Rank, then suit, then modifiers</span>'}
-          ${pending.word ? ` <span class="${resolveWord(pending.word) ? 'money-c' : 'mult-c'}">${esc(pending.word)}${resolveWord(pending.word) ? ' → ' + esc(resolveWord(pending.word)[0]) : ' ?'}</span>` : ''}
-        </span>
-        <button class="primary" data-act="add-card" ${pending.rank && pending.suit ? '' : 'disabled'}>Add to hand <kbd>Enter</kbd></button>
+      <div class="quick">
+        <input id="hand-text" type="text" autocomplete="off" spellcheck="false" placeholder="Type or paste a hand: AH, KC, QD, JS, 10C, 9C, 8S" aria-label="Hand shorthand">
+        <button class="primary" data-act="add-text">Add cards <kbd>Enter</kbd></button>
       </div>
-      <div class="muted keys-hint" style="font-size:15px">Keys: rank <kbd>A</kbd> <kbd>2</kbd>-<kbd>9</kbd> <kbd>T</kbd> <kbd>J</kbd> <kbd>Q</kbd> <kbd>K</kbd>, suit <kbd>s</kbd> <kbd>h</kbd> <kbd>d</kbd> <kbd>c</kbd>, then type a modifier (<kbd>g</kbd> glass, <kbd>r</kbd> red seal, <kbd>p</kbd> poly…), <kbd>Space</kbd> for another, <kbd>Enter</kbd> to add. <kbd>Backspace</kbd> undoes.</div>`;
+      <div class="btn-row"><span class="label">Rank</span>${RANK_KEYS.map(rk => btn('rank', rk, rk, false)).join('')}</div>
+      <div class="btn-row"><span class="label">Suit</span>${A.SUITS.map(su => btn('suit', su, SUIT_SYMBOL[su] + ' ' + A.SUIT_NAMES[A.SUITS.indexOf(su)], live?.suit === su, 'suit-' + su)).join('')}</div>
+      <div class="btn-row"><span class="label">Enhance</span>${ENHANCEMENTS.map(e => t('enhancement:' + e, MOD_LABEL[e], live?.enhancement === e, { ...sample, enhancement: e })).join('')}</div>
+      <div class="btn-row"><span class="label">Edition</span>${CARD_EDITIONS.map(e => t('edition:' + e, MOD_LABEL[e], live?.edition === e, { ...sample, edition: e })).join('')}</div>
+      <div class="btn-row"><span class="label">Seal</span>${SEALS.map(e => t('seal:' + e, MOD_LABEL[e], live?.seal === e, { ...sample, seal: e })).join('')}${t('debuffed:true', 'Debuffed', !!live?.debuffed, { ...sample, debuffed: true })}</div>
+      <div id="entry-preview">
+        ${live ? Sprites.card(live) : ''}
+        <span id="entry-text">${live ? `Editing <b>${esc(cardText(live))}</b>${live.suit ? '' : ' <span class="muted">(no suit yet)</span>'}` : '<span class="muted">Tap a rank to add a card, then its suit and modifiers if you like.</span>'}
+          ${entry.word ? ` <span class="${r ? 'money-c' : 'mult-c'}">${esc(entry.word)}${r ? ' → ' + esc(r[0]) : ' ?'}</span>` : ''}
+        </span>
+        ${live ? '<button class="blue" data-act="add-card">Done <kbd>Enter</kbd></button>' : ''}
+      </div>
+      <div class="muted keys-hint" style="font-size:15px">Keys anywhere: a rank (<kbd>A</kbd> <kbd>2</kbd>-<kbd>9</kbd> <kbd>T</kbd> <kbd>J</kbd> <kbd>Q</kbd> <kbd>K</kbd>) adds a card; then optionally a suit (<kbd>s</kbd> <kbd>h</kbd> <kbd>d</kbd> <kbd>c</kbd>) and a modifier (<kbd>g</kbd> glass, <kbd>r</kbd> red seal, <kbd>p</kbd> poly…). <kbd>KQ77</kbd> adds four cards with no suits. <kbd>Backspace</kbd> undoes. Paste a hand like <kbd>AH KC 10D</kbd> anywhere.</div>`;
   }
 
   // ---------- plays ----------
@@ -645,7 +694,9 @@
     if (playsError) { box.innerHTML = `<div class="mult-c">Couldn't calculate: ${esc(playsError)}</div>`; return; }
     if (!state.hand.length) { box.innerHTML = `<div class="empty-hint">Add cards to your hand to see the best plays.</div>`; return; }
     if (!lastPlays.length) { box.innerHTML = `<div class="empty-hint">Calculating…</div>`; return; }
-    box.innerHTML = lastPlays.map((p, n) => {
+    const noSuit = state.hand.filter(c => !c.suit).length;
+    const note = noSuit ? `<div class="note">${noSuit} card${noSuit > 1 ? 's have' : ' has'} no suit yet, so ${noSuit > 1 ? 'they count' : 'it counts'} as mixed suits (no flush). Click a card to set its suit.</div>` : '';
+    box.innerHTML = note + lastPlays.map((p, n) => {
       const sel = n === selectedPlay ? ' sel' : '';
       const lvl = state.levels[p.handType].level;
       const ranged = !sameBig(p.high, p.low);
@@ -668,22 +719,25 @@
   // ---------- hand levels ----------
 
   function renderLevels() {
-    const showPlayed = state.flags.theEye || state.jokers.some(j => USES_PLAYED.includes(j.id));
+    // "Played this round" only matters for Card Sharp and The Eye, so it shows only then.
+    const showRound = state.flags.theEye || state.jokers.some(j => j.id === 116);
     $('#levels').innerHTML = state.levels.map((h, i) => {
       const base = A.handBase(i, h.level);
       return `<div class="lv${h.level > 1 ? ' up' : ''}" data-h="${i}">
-        <div class="hn">${A.HAND_NAMES[i]}<div class="pl">${A.PLANETS[i]}</div></div>
+        <div class="hn">${A.HAND_NAMES[i]}</div>
         <div class="lvl-ctl">
           <button data-act="lvl-down" title="Undo a level">−</button>
           <span class="lvl-n" data-act="lvl-edit" title="Click to type a level">lvl ${h.level}</span>
           <button data-act="lvl-up" class="blue" title="Used ${A.PLANETS[i]}: +1 level">+1</button>
         </div>
         <div class="cxm"><span class="c">${base.chips}</span>×<span class="m">${base.mult}</span></div>
-        ${showPlayed ? `<div class="extra">
-          <label>played <input type="number" min="0" data-act="played" value="${h.played || 0}"></label>
-          <label><input type="checkbox" data-act="played-round" ${h.playedThisRound ? 'checked' : ''}> this round</label>
+        <div class="pl">${A.PLANETS[i]}</div>
+        <label class="played" title="Times played this run (Supernova, Obelisk)">played
+          <input type="number" min="0" data-act="played" value="${h.played || 0}" aria-label="Times ${A.HAND_NAMES[i]} played this run"></label>
+        ${showRound || state.flags.observatory ? `<div class="extra">
+          ${showRound ? `<label><input type="checkbox" data-act="played-round" ${h.playedThisRound ? 'checked' : ''}> played this round</label>` : ''}
           ${state.flags.observatory ? `<label>${A.PLANETS[i]} held <input type="number" min="0" data-act="planets" value="${h.planets || 0}"></label>` : ''}
-        </div>` : state.flags.observatory ? `<div class="extra"><label>${A.PLANETS[i]} held <input type="number" min="0" data-act="planets" value="${h.planets || 0}"></label></div>` : ''}
+        </div>` : ''}
       </div>`;
     }).join('');
   }
@@ -806,7 +860,7 @@
       <div class="info" style="position:static;width:auto;pointer-events:auto;box-shadow:none"><div class="rules rules-text" id="pop-rules">${JokerCatalog.rulesHtml(j.id, j.value || 0)}</div>
         <div class="ord">${esc(meta.note || ORDER_NOTES[meta.order])}</div></div>
       ${counter}
-      <div class="field"><span class="label">Edition</span>${tile('j-ed', '', 'None', !j.edition, Sprites.joker({ ...j, edition: null }))}${EDITIONS.map(e => tile('j-ed', e, MOD_LABEL[e], j.edition === e, Sprites.joker({ ...j, edition: e }))).join('')}</div>
+      <div class="field"><span class="label">Edition</span>${tile('j-ed', '', 'None', !j.edition, Sprites.joker({ ...j, edition: null }))}${JOKER_EDITIONS.map(e => tile('j-ed', e, MOD_LABEL[e], j.edition === e, Sprites.joker({ ...j, edition: e }))).join('')}</div>
       <div class="field"><span class="label">Sell value</span><input type="number" min="0" data-act="j-sell" value="${j.sell}"><label><input type="checkbox" data-act="j-debuff" ${j.debuffed ? 'checked' : ''}> debuffed</label></div>
       <div class="actions">
         <button data-act="j-left">◀ Move</button><button data-act="j-right">Move ▶</button>
@@ -879,7 +933,7 @@
       <div class="field"><span class="label">Rank</span>${RANK_KEYS.map(r => chip('c-rank', r, r, A.normalizeRank(c.rank) === r)).join('')}</div>
       <div class="field"><span class="label">Suit</span>${A.SUITS.map(s => chip('c-suit', s, SUIT_SYMBOL[s], c.suit === s)).join('')}</div>
       <div class="field"><span class="label">Enhance</span>${tile('c-mod', 'enhancement:', 'None', !c.enhancement, Sprites.card({ ...c, enhancement: null }))}${ENHANCEMENTS.map(x => tile('c-mod', 'enhancement:' + x, MOD_LABEL[x], c.enhancement === x, Sprites.card({ ...c, enhancement: x }))).join('')}</div>
-      <div class="field"><span class="label">Edition</span>${tile('c-mod', 'edition:', 'None', !c.edition, Sprites.card({ ...c, edition: null }))}${EDITIONS.map(x => tile('c-mod', 'edition:' + x, MOD_LABEL[x], c.edition === x, Sprites.card({ ...c, edition: x }))).join('')}</div>
+      <div class="field"><span class="label">Edition</span>${tile('c-mod', 'edition:', 'None', !c.edition, Sprites.card({ ...c, edition: null }))}${CARD_EDITIONS.map(x => tile('c-mod', 'edition:' + x, MOD_LABEL[x], c.edition === x, Sprites.card({ ...c, edition: x }))).join('')}</div>
       <div class="field"><span class="label">Seal</span>${tile('c-mod', 'seal:', 'None', !c.seal, Sprites.card({ ...c, seal: null }))}${SEALS.map(x => tile('c-mod', 'seal:' + x, MOD_LABEL[x], c.seal === x, Sprites.card({ ...c, seal: x }))).join('')}</div>
       <div class="field"><span class="label">Debuffed</span>${tile('c-debuff', '', c.debuffed ? 'Debuffed' : 'Normal', c.debuffed, Sprites.card({ ...c, debuffed: !c.debuffed }))}</div>
       <div class="actions">
@@ -1156,7 +1210,7 @@
             return;
           }
           state = { ...freshState(), tierOverrides: state.tierOverrides };
-          resetPending(); renderEntry(); changed(); renderSettings(); toast('Cleared. New run.');
+          resetEntry(); renderEntry(); changed(); renderSettings(); toast('Cleared. New run.');
         }
         return;
       }
@@ -1177,10 +1231,11 @@
       }
 
       if (e.target.closest('#entry')) {
-        if (act === 'rank') setRank(actEl.dataset.v);
+        if (act === 'rank') addRank(actEl.dataset.v);
         else if (act === 'suit') setSuit(actEl.dataset.v);
         else if (act === 'mod') { const [g, v] = actEl.dataset.v.split(':'); toggleMod(g, g === 'debuffed' ? true : v); }
-        else if (act === 'add-card') commitPending();
+        else if (act === 'add-card') finishCard();
+        else if (act === 'add-text') { const el = $('#hand-text'); if (addHandText(el.value)) el.value = ''; }
         return;
       }
 
@@ -1213,7 +1268,7 @@
         if (!$('#popover').hidden) return closePopover();
         if (!$('#picker').hidden) return closePicker();
         if (!$('#settings').hidden) { $('#settings').hidden = true; $('#scrim').hidden = true; return; }
-        resetPending(); renderEntry(); return;
+        resetEntry(); renderEntry(); return;
       }
       if (e.target.id === 'picker-search') {
         if (e.key === 'Enter' && picker.results.length) { addJoker(picker.results[picker.kb].id); closePicker(); e.preventDefault(); }
@@ -1221,6 +1276,7 @@
         if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { picker.kb = Math.max(0, picker.kb - 1); renderPicker(); e.preventDefault(); }
         return;
       }
+      if (e.target.id === 'hand-text' && e.key === 'Enter') { e.preventDefault(); if (addHandText(e.target.value)) e.target.value = ''; return; }
       if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
       if (!$('#popover').hidden || !$('#picker').hidden || !$('#settings').hidden) return;
       if (e.key === '/') { e.preventDefault(); openPicker(); return; }
@@ -1243,6 +1299,13 @@
       const play = e.target.closest('.play');
       const next = (play ? lastPlays[+play.dataset.n] : lastPlays[selectedPlay])?.order || [];
       if (next.join() !== highlight.join()) { highlight = next; renderHand(); }
+    });
+
+    // Pasting a hand ("AH KC 10D") anywhere outside a text box adds those cards.
+    document.addEventListener('paste', e => {
+      if (e.target.matches?.('input, textarea, select') || !$('#popover').hidden || !$('#picker').hidden) return;
+      const text = e.clipboardData?.getData('text') || '';
+      if (text.trim()) { e.preventDefault(); addHandText(text); }
     });
 
     // Once a touch drag has started, stop the page from scrolling under it.

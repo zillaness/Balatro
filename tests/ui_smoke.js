@@ -125,6 +125,11 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.click('.play[data-n="1"]');
   check((await page.$$('#hand-row .slot.hl')).length > 0 && await page.$eval('.play[data-n="1"]', e => e.classList.contains('sel')), 'clicking a play selects it and outlines its cards');
 
+  // Times played is editable on every hand row and feeds Supernova (+1 Mult per time played).
+  await page.fill('.lv[data-h="8"] [data-act=played]', '7');
+  await page.dispatchEvent('.lv[data-h="8"] [data-act=played]', 'change');
+  check((await page.$eval('.lv[data-h="8"] [data-act=played]', e => e.value)) === '7', 'times played is editable without Supernova');
+
   // Survives a reload.
   await page.reload();
   check((await page.$$('#joker-row .slot')).length === 5 && (await page.$$('#hand-row .slot')).length === 4, 'state persists across reload');
@@ -165,6 +170,41 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check(/The Flint/.test(await page.$eval('#run-strip', e => e.innerText)) && /300 of 1,200/.test(await page.$eval('#run-strip', e => e.innerText)), 'run strip shows blind and chips', await page.$eval('#run-strip', e => e.innerText.replace(/\s+/g, ' ')));
   check((await page.$eval('.lv[data-h="10"] .lvl-n', e => e.innerText)) === 'lvl 3', 'save import sets Pair to level 3');
   require('fs').unlinkSync(tmp);
+
+  // Quick entry: ranks alone add cards with no suit; suits can be set later.
+  await page.click('[data-act=clear-hand]');
+  await page.keyboard.type('KQ77');
+  await page.keyboard.press('Enter');
+  const quick = await page.$$eval('#hand-row .slot', els => els.map(e => e.title));
+  check(quick.join(' ') === 'K? Q? 7? 7?', 'ranks alone add suitless cards', quick.join(' '));
+  await page.waitForTimeout(500);
+  check(/no suit yet/.test(await page.$eval('#plays', e => e.innerText)), 'plays panel notes cards without a suit');
+  await page.click('#hand-row .slot');
+  await page.click('#popover [data-act=c-suit][data-v=h]');
+  await page.keyboard.press('Escape');
+  check((await page.$$eval('#hand-row .slot', els => els[0].title)) === 'K♥', 'suit set later in the card editor');
+
+  // Playing cards can't be Negative; jokers can.
+  check(!(await page.$('#entry [data-v="edition:negative"]')), 'no Negative option for playing cards');
+
+  // Shorthand box and paste.
+  await page.click('[data-act=clear-hand]');
+  await page.fill('#hand-text', 'AH, KC, QD, JS, 10C, 9C, 8S');
+  await page.press('#hand-text', 'Enter');
+  const typed = await page.$$eval('#hand-row .slot', els => els.map(e => e.title));
+  check(typed.join(' ') === 'A♥ K♣ Q♦ J♠ 10♣ 9♣ 8♠', 'shorthand AH, KC, QD... adds the hand', typed.join(' '));
+  await page.click('[data-act=clear-hand]');
+  await page.fill('#hand-text', 'KH:glass+red 7s/poly 2');
+  await page.press('#hand-text', 'Enter');
+  const mods = await page.$$eval('#hand-row .slot', els => els.map(e => e.title));
+  check(mods.join(' | ') === 'K♥ glass, red seal | 7♠ poly | 2?', 'shorthand modifiers and a suitless card', mods.join(' | '));
+  await page.click('[data-act=clear-hand]');
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'AS AD AC');
+    document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+  });
+  check((await page.$$('#hand-row .slot')).length === 3, 'pasting a hand anywhere adds it');
 
   // Phone width: no sideways scroll.
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

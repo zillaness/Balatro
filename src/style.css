@@ -337,6 +337,26 @@ main {
   .btn-row .label { width: 100%; }
 }
 
+/* A card whose suit isn't set yet. */
+.nosuit {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  pointer-events: none;
+  font-style: normal;
+  color: #3b4a4e;
+  line-height: .9;
+}
+.nosuit b { font-weight: normal; font-size: calc(40px * var(--s)); }
+.nosuit em { font-style: normal; font-size: calc(24px * var(--s)); color: #8a6d1e; }
+.slot.cur > .card { outline: 3px solid var(--chips); outline-offset: 1px; border-radius: 6px; }
+.quick { display: flex; gap: 8px; flex-wrap: wrap; }
+.quick input { flex: 1; min-width: 0; font-size: 18px; }
+#plays .note { color: var(--money); font-size: 15px; margin-bottom: 8px; }
+button:disabled { opacity: .45; cursor: default; }
+
 /* Picture buttons for enhancements, editions, seals. */
 .tile {
   display: inline-flex;
@@ -409,14 +429,16 @@ main {
 .lv {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 6px;
+  gap: 2px 6px;
   align-items: center;
   padding: 4px 6px;
   border-radius: 6px;
 }
 .lv:nth-child(odd) { background: rgba(0, 0, 0, .12); }
 .lv .hn { line-height: 1.05; }
-.lv .pl { font-size: 14px; color: var(--muted); }
+.lv .pl { grid-column: 1; font-size: 14px; color: var(--muted); }
+.lv .played { grid-column: 2 / -1; justify-self: end; display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--muted); }
+.lv .played input { width: 46px; padding: 0 4px; font-size: 14px; border-width: 1px; }
 .lv .lvl-ctl { display: flex; align-items: center; gap: 4px; }
 .lv .lvl-ctl button { padding: 2px 7px; min-width: 0; }
 .lv .lvl-n {
