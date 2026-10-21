@@ -1,6 +1,6 @@
 ---
 file: README.md
-version: 1.0
+version: 1.0.1
 author: Sam Cao
 created: 2026-10-21
 last_updated: 2026-10-21
@@ -10,7 +10,7 @@ ai_update: Update last_updated and version. Append changelog at bottom.
 
 # Balatro Calculator
 
-**Live:** https://zillaness.github.io/balatro/
+**Live:** https://zillaness.github.io/Balatro/
 
 A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand and jokers, or load your run from the game's save file, and it shows the best plays, the best joker order, and what every joker does. One self-contained page: it works offline if you save it.
 
@@ -60,3 +60,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 ## CHANGELOG
 
 - v1.0 (2026-10-21): Initial README for the move to zillaness/balatro.
+- v1.0.1 (2026-10-21): Site address uses the repo's capital B (/Balatro/); Pages paths are case-sensitive.

@@ -1,6 +1,6 @@
 /**
  * @file build.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.4';
+const VERSION = '1.4.1';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
@@ -22,7 +22,8 @@ const CHANGELOG = [
   ['1.2', '2026-10-21', 'Load save: drag save.jkr onto the page or choose it to load jokers (editions, counters, sell values), hand, hand levels, deck, blind, and boss flags. Read-only.'],
   ['1.3', '2026-10-21', 'Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.'],
   ['1.3.1', '2026-10-21', 'Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.'],
-  ['1.4', '2026-10-21', 'Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.']
+  ['1.4', '2026-10-21', 'Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.'],
+  ['1.4.1', '2026-10-21', 'Favicon and home-screen icon (the classic Joker).']
 ];
 
 const ROOT = __dirname;
@@ -66,7 +67,11 @@ function build() {
 -->`;
   const changelog = `<!-- CHANGELOG\n${CHANGELOG.map(([v, d, n]) => `  v${v} (${d}): ${n}`).join('\n')}\n-->`;
 
+  // Tab and home-screen icons: the classic Joker's head, cut from vendor/assets/Jokers.png.
+  const icon = f => `data:image/png;base64,${fs.readFileSync(path.join(ROOT, 'src', f)).toString('base64')}`;
   const html = read('src/page_template.html')
+    .replace('FAVICON_URI', () => icon('favicon.png'))
+    .replace('APPLE_ICON_URI', () => icon('apple-touch-icon.png'))
     .replace('<!--METADATA-->', () => meta)
     .replace('/*STYLE*/', () => css)
     .replace('<!--WORKER-->', () => `<script type="text/plain" id="worker-src">\n${scriptSafe(workerJs, 'worker')}\n</script>`)
@@ -93,4 +98,5 @@ build();
 /** CHANGELOG
  * v1.0 (2026-10-21): Inline CSS with data-URI sprites and font, page scripts, and worker source as text/plain for a Blob worker.
  * v1.1 (2026-10-21): Moved to zillaness/balatro: writes index.html for GitHub Pages; template is src/page_template.html.
+ * v1.2 (2026-10-21): Inlines src/favicon.png and src/apple-touch-icon.png.
  */

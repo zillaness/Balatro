@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
-  file: index.html (Balatro Calculator v1.4)
-  version: 1.4
+  file: index.html (Balatro Calculator v1.4.1)
+  version: 1.4.1
   author: Sam Cao
   created: 2026-10-21
   last_updated: 2026-10-21
@@ -13,6 +13,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Balatro Calculator</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAD20lEQVR4nO1av2rbQBj/2WTukDcI9hN06+RCHsBGkCzFIeCAQtfSIUMppUOG0rElghhKTZcWjP0AgWrpmCeIyRtk6BykDtZnn093p++kOztF+i2WfH/0/fl933d3ElBztHYtAKE/ClNd23wceZOz7Wvi/wU7ZYDo9enjg7ZfsLcPwA8TdmaA/ihMTUqrEOztOzdCEwLbfiDR3tb7BNfhsOdiEi7K0t4nah8CW2OArffJ87PrK2X7AEhdhEHDAN8PqJr0fKP2DHjyBhicnefuB2fnzsqg13VAmbInQy6DzUrQMba6ECoLn9thq4lNe3bCfBy1XGd+cfnLlYE7N4sBK4V6UWHfAMUClkV/FKY2MnAMUfscYLSQjeeVuDkqN07G4a9Sw4I4BGBmgp8k6Epxeb6ShjCh9iGgZQA34TxlkPwBQu3O0T0DXNPf89y1D4GcAfqjMC2iP2XXpwSTTNNetNJLbmNXAfEB83HUosXGrvOEWOrERRhXLqsyKCYSug6QscVn7IsQSmIQh0qZOMtlQu1zAIsBsqWroP3tp7E9OT2u/AwKB04YbBigPwrT9SnsFZLJUufZ9ZX5FNZA/yKFi/prDXJzpHUf6ZFMlgZoD1PMhsu2gaRHEwKmxvaw2s7W1vu6OcqGBUf+0psh46FHtmmhEOIKI0Ici8PsVwq16eMDghF/769CEwLizXwctQZACmy+krI6htZsWcmjRUzY8LxqbsZ6g/SQdaA2sW8uBKjDIDOEapANRIWTSUtrCF24GA1igOhMulf10+YAW6Xv311mV5c4+NMFsFREfLExu04LFTKNaQ9TICtnnMTYnAky4OVIjCicTFqY9tb/J5NImwPKjHGB0gZYbYYMr7/KCG4zxsVHU7UPAScGWCfAYsRxjDiO2f/r4GKVCVR4O0wrwc8Xbzf+P/h4wRJOVrbX62l6rpGcHufm1tV3LmofAl6qgKpGy54r8riLcwEOtvZ6fFsK2aLyKU9/FKZiHuh0Ot6UVcV/UwYrwsk5n4oFQJ723NLFGefqQyknOSATRFkWRajKmKqPCVXLnozah4CXKrBYLAAAHcV5nm2CdLXi08H511fcfFAEn3EvwkkZFO91OYBrCJPHF4sF3lx+UrY1S+GSqPyd4PzF11y/u5f3q2vyfFlQPgGA7u+DXPuH58vf2y+v1zJZsIHVkRRXKasTCABePbvfaOMaQ1QaAH78zSsOAO9v1c8mYzRnggxoLSTS3eR50eMyTrrA97vltcyGIqi8ftJdX9O8BBUbOGGR+5ND9yKlVULq6EpjqC/1Mz1DNU6EyRiyIWofArXHP0H55OezF0aiAAAAAElFTkSuQmCC">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /**
@@ -5784,4 +5786,5 @@ const Sprites = (() => {
   v1.3 (2026-10-21): Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.
   v1.3.1 (2026-10-21): Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.
   v1.4 (2026-10-21): Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.
+  v1.4.1 (2026-10-21): Favicon and home-screen icon (the classic Joker).
 -->
