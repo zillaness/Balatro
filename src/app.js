@@ -77,6 +77,8 @@
       flags: { theFlint: false, theEye: false, plasma: false, observatory: false },
       tierOverrides: {},
       run: null,
+      // Minimized sections (per viewer).
+      ui: { collapsed: {} },
       // Round for discard advice; filled from a save when one is loaded.
       round: { need: null, hands: 4, discards: 3, handSize: 8 },
       deck: null
@@ -87,7 +89,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY));
       if (saved && Array.isArray(saved.jokers) && Array.isArray(saved.hand) && saved.levels?.length === 12) {
-        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) } };
+        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) }, ui: { collapsed: {}, ...(saved.ui || {}) } };
       }
     } catch (e) { /* private mode or bad data: start fresh */ }
     return freshState();
@@ -107,9 +109,8 @@
     renderHand();
     renderLevels();
     if (opt.result && !opt.result.applied && !opt.running) renderOrderResult();
-    if (plays) scheduleAdvice();
     else if (opt.result?.applied) { opt.result = null; renderOrderResult(); }
-    if (plays) schedulePlays();
+    if (plays) { schedulePlays(); scheduleAdvice(); }
   }
 
   // ---------- worker ----------
@@ -440,7 +441,9 @@
   // ---------- discard advice ----------
 
   let advPool = [];
-  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [] };
+  // recommend: the discard the advice suggests (outlined red in the hand), or null when it says play.
+  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [], recommend: null };
+  let playHover = false;
   const ADV_SAMPLES = 240;
 
   function killAdvPool() { advPool.forEach(w => w.terminate()); advPool = []; }
@@ -464,6 +467,7 @@
   function scheduleAdvice() {
     clearTimeout(adv.timer);
     adv.reqId++;
+    adv.recommend = null;
     killAdvPool();
     adv.running = state.hand.length > 0;
     renderAdvice();
@@ -472,6 +476,8 @@
 
   function runAdvice() {
     const id = adv.reqId;
+    if (adv.started === id) return;
+    adv.started = id;
     const r = state.round;
     const round = {
       need: r.need > 0 ? r.need : Infinity,
@@ -497,6 +503,7 @@
           const m = ev.data;
           if (m.reqId !== id) return;
           if (m.error) { adv.running = false; adv.result = { error: m.error }; renderAdvice(); return; }
+          if (!m.results) return;
           results.push(...m.results);
           if (++done === parts) { adv.running = false; adv.result = { results, round, deckFrom: drawPile().from, deckSize: deck.length }; renderAdvice(); }
         };
@@ -507,6 +514,11 @@
   }
 
   const pct = x => `${Math.round(x * 100)}%`;
+  const shortCard = c => `${A.normalizeRank(c.rank)}${c.suit ? SUIT_SYMBOL[c.suit] : '?'}`;
+  // Cards written out (pictures are hard to read at small sizes): "K♠ Q♥", red for hearts and diamonds.
+  const cardChips = cards => cards.map(c => `<span class="ct ct-${c.suit || 'x'}">${esc(shortCard(c))}${c.enhancement ? `<small>${esc(c.enhancement)}</small>` : ''}</span>`).join('');
+  const cardList = idx => idx.map(i => state.hand[i]).filter(Boolean).map(shortCard).join(' ');
+  const keptList = idx => state.hand.filter((_, i) => !idx.includes(i)).map(shortCard).join(' ');
 
   function optionLabel(o) {
     if (o.play) {
@@ -514,7 +526,8 @@
       return `<b>Play now</b>${p ? ` <span class="muted">${A.HAND_NAMES[p.handType]}, ${fmtBig(p.low)}</span>` : ''}`;
     }
     const cards = o.discard.map(i => state.hand[i]).filter(Boolean);
-    return `<b>Discard ${cards.length}</b> <span class="mini">${cards.map(c => Sprites.card(c)).join('')}</span> <span class="muted">${esc(o.why)}</span>`;
+    const kept = state.hand.filter((_, i) => !o.discard.includes(i));
+    return `<b>Discard</b> ${cardChips(cards)} <span class="muted">keep</span> ${cardChips(kept)}<div class="muted why">${esc(o.why)}</div>`;
   }
 
   function typeOdds(o) {
@@ -523,16 +536,18 @@
   }
 
   function renderAdvice() {
-    const box = $('#advice');
+    const box = $('#advice-body');
     const mini = $('#advice-mini');
     if (!box) return;
     mini.hidden = true;
+    // The round inputs are static (re-creating them while typing would blur them and fire change again);
+    // only fill in values for boxes you aren't editing.
     const r = state.round;
-    const inputs = `<div class="round">
-        <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" value="${r.need ?? ''}" placeholder="?"></label>
-        <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands" value="${r.hands}"></label>
-        <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards" value="${r.discards}"></label>
-      </div>`;
+    for (const [id, v] of [['round-need', r.need ?? ''], ['round-hands', r.hands], ['round-discards', r.discards]]) {
+      const el = $('#' + id);
+      if (el && document.activeElement !== el) el.value = v;
+    }
+    const inputs = '';
     if (!state.hand.length) { box.innerHTML = inputs + '<div class="muted">Add your hand to get discard advice.</div>'; return; }
     const res = adv.result;
     if (adv.running || !res) { box.innerHTML = inputs + `<div class="muted">Simulating draws…</div>`; return; }
@@ -544,19 +559,26 @@
     const top = sorted[0];
     const nowScore = lastPlays[0] ? lastPlays[0].low[0] * 10 ** lastPlays[0].low[1] : 0;
     let headline;
+    let recommend = null;
     if (known && nowScore >= res.round.need) headline = `<b>Play now.</b> Your best play scores ${fmtBig(lastPlays[0].low)}, enough to clear the blind.`;
     else if (!res.round.discards) headline = `<b>Play now.</b> No discards left.`;
     else if (known) {
-      headline = top.play || top.clear - play.clear < 0.05
+      if (!top.play && top.clear - play.clear >= 0.05) recommend = top;
+      headline = !recommend
         ? `<b>Play now.</b> Discarding doesn't clearly help (best discard ${pct(sorted.find(o => !o.play)?.clear ?? 0)} vs ${pct(play.clear)} to clear).`
-        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
+        : `<b>Discard ${cardList(top.discard)}</b>, keep ${keptList(top.discard)} to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
     } else {
-      headline = top.play || top.meanNext < play.meanNext * 1.1
+      if (!top.play && top.meanNext >= play.meanNext * 1.1) recommend = top;
+      headline = !recommend
         ? `<b>Play now.</b> No discard clearly improves your next hand. Enter chips needed for a clear-the-blind estimate.`
-        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
+        : `<b>Discard ${cardList(top.discard)}</b>, keep ${keptList(top.discard)} to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
     }
     const shown = sorted.slice(0, 3);
     if (!shown.includes(play)) shown.push(play);
+    // Outline the suggested discards in the hand (red) instead of the best play (gold).
+    const prev = adv.recommend?.discard?.join() || '';
+    adv.recommend = recommend;
+    if ((recommend?.discard?.join() || '') !== prev) renderHand();
     // The same headline under the hand, so the advice is visible without scrolling.
     mini.hidden = false;
     mini.innerHTML = `<span class="tag-adv">Advice</span> ${headline} <a href="#plays-panel" class="muted">details</a>`;
@@ -671,7 +693,11 @@
       row.innerHTML = `<div class="empty-hint">Type ranks to add cards (<kbd>K</kbd> <kbd>Q</kbd> <kbd>7</kbd>), with a suit if you know it (<kbd>K</kbd> <kbd>h</kbd>), or paste a hand like <kbd>AH KC 10D</kbd>. Set suits and modifiers later by clicking a card.</div>`;
       return;
     }
-    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${adv.hover.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
+    // Red = cards to discard (hovered option, else the recommendation); gold = cards to play, shown when
+    // the advice says play or when you point at or pick a play.
+    const dis = adv.hover.length ? adv.hover : adv.recommend?.discard || [];
+    const showPlay = playHover || selectedPlay !== 0 || !dis.length;
+    row.innerHTML = state.hand.map((c, i) => `<div class="slot${showPlay && highlight.includes(i) ? ' hl' : ''}${dis.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
   }
 
   // ---------- card entry ----------
@@ -867,7 +893,7 @@
         <div class="rank-n">${n + 1}</div>
         <div>
           <div><span class="name">${A.HAND_NAMES[p.handType]}</span> <span class="lvl">lvl ${lvl}</span></div>
-          <div class="mini">${cards.map(c => Sprites.card(c)).join('')}</div>
+          <div class="mini">${cards.map(c => Sprites.card(c)).join('')}<span class="ctext">${cardChips(cards)}</span></div>
         </div>
         <div class="score">
           <div class="big">${fmtBig(p.low)}</div>
@@ -1323,6 +1349,20 @@
         <button data-act="reset-tiers">Reset tier edits</button><button class="primary" data-act="new-run">New run (clear everything)</button></div>`;
   }
 
+  // ---------- minimized sections ----------
+
+  function applyCollapsed() {
+    for (const b of $$('[data-act=collapse]')) {
+      const key = b.dataset.panel;
+      const shut = !!state.ui.collapsed[key];
+      b.setAttribute('aria-expanded', String(!shut));
+      b.textContent = key === 'entry' ? (shut ? 'Entry ▸' : 'Entry ▾') : (shut ? '▸' : '▾');
+      b.title = shut ? 'Expand' : (key === 'entry' ? 'Hide the card entry buttons' : 'Minimize');
+      if (key === 'entry') $('#entry').hidden = shut;
+      else document.querySelector(`.panel[data-panel="${key}"]`)?.classList.toggle('collapsed', shut);
+    }
+  }
+
   // ---------- toast ----------
 
   let toastTimer = null;
@@ -1371,7 +1411,7 @@
             setTimeout(() => { if (actEl.isConnected) { actEl.dataset.armed = ''; actEl.textContent = 'New run (clear everything)'; } }, 3000);
             return;
           }
-          state = { ...freshState(), tierOverrides: state.tierOverrides };
+          state = { ...freshState(), tierOverrides: state.tierOverrides, ui: state.ui };
           resetEntry(); renderEntry(); changed(); renderSettings(); toast('Cleared. New run.');
         }
         return;
@@ -1406,6 +1446,7 @@
       const cslot = e.target.closest('#hand-row .slot');
       if (cslot) return openCardEditor(cslot.dataset.uid, cslot);
       if (act === 'clear-hand' && state.hand.length) { state.hand = []; changed(); return; }
+      if (act === 'collapse') { const k = actEl.dataset.panel; state.ui.collapsed[k] = !state.ui.collapsed[k]; save(); applyCollapsed(); return; }
       if (act === 'optimize') return optimize();
       if (act === 'apply-order') return applyOrder();
       if (act === 'dismiss-order') { opt.result = null; renderOrderResult(); return; }
@@ -1465,7 +1506,7 @@
       if (dis.join() !== adv.hover.join()) { adv.hover = dis; renderHand(); }
       const play = e.target.closest('.play');
       const next = (play ? lastPlays[+play.dataset.n] : lastPlays[selectedPlay])?.order || [];
-      if (next.join() !== highlight.join()) { highlight = next; renderHand(); }
+      if (next.join() !== highlight.join() || !!play !== playHover) { highlight = next; playHover = !!play; renderHand(); }
     });
 
     // Pasting a hand ("AH KC 10D") anywhere outside a text box adds those cards.
@@ -1507,6 +1548,7 @@
     renderEntry();
     renderPlays();
     renderRun();
+    applyCollapsed();
     changed();
   }
 

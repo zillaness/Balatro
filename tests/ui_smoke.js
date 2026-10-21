@@ -212,6 +212,29 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   });
   check((await page.$$('#hand-row .slot')).length === 3, 'pasting a hand anywhere adds it');
 
+  // Discard advice names the cards and outlines them in red (the real-save hand: a 48-point pair, 800 to go).
+  await page.click('[data-act=clear-hand]');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.fill('#hand-text', 'KS QH 9D:lucky 8D 7C 7D 5C:bonus 2C');
+  await page.press('#hand-text', 'Enter');
+  await page.fill('#round-need', '800');
+  await page.dispatchEvent('#round-need', 'change');
+  await page.waitForFunction(() => /Discard [^,]+, keep/.test(document.querySelector('#advice-mini')?.innerText || ''), null, { timeout: 30000 });
+  const headline = await page.$eval('#advice-mini', e => e.innerText);
+  const red = await page.$$eval('#hand-row .slot.dis', els => els.map(e => e.title.split(' ')[0]));
+  check(red.length >= 3 && red.every(t => headline.includes(t)), 'advice names the discards and outlines them red', `${headline} | red: ${red.join(' ')}`);
+
+  // Sections minimize and remember it.
+  await page.click('[data-act=collapse][data-panel=levels]');
+  check(await page.$eval('#levels-panel', e => e.classList.contains('collapsed')) && !(await page.isVisible('#levels')), 'hand levels section minimizes');
+  await page.click('[data-act=collapse][data-panel=entry]');
+  check(!(await page.isVisible('#entry')) && await page.isVisible('#hand-row'), 'card entry hides while the hand stays');
+  await page.reload();
+  check(await page.$eval('#levels-panel', e => e.classList.contains('collapsed')), 'minimized sections stay minimized after reload');
+  await page.click('[data-act=collapse][data-panel=levels]');
+  await page.click('[data-act=collapse][data-panel=entry]');
+
   // Phone width: no sideways scroll.
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   phone.on('pageerror', e => errors.push('phone: ' + e.message));

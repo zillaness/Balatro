@@ -40,6 +40,8 @@
 }
 
 * { box-sizing: border-box; }
+/* hidden must win over any display rule (#entry is a grid, drawers are flex...). */
+[hidden] { display: none !important; }
 
 html, body { margin: 0; }
 
@@ -164,7 +166,7 @@ main {
 }
 #jokers-panel { grid-area: jokers; }
 #hand-panel { grid-area: hand; }
-#plays-panel { grid-area: plays; }
+#results-col { grid-area: plays; display: grid; gap: 12px; align-content: start; min-width: 0; }
 #levels-panel { grid-area: levels; align-self: start; }
 
 .panel {
@@ -401,6 +403,21 @@ button:disabled { opacity: .45; cursor: default; }
 #plays.busy { opacity: .55; transition: opacity .15s; }
 .play { cursor: pointer; }
 .play.sel { box-shadow: inset 0 0 0 2px var(--money); }
+
+/* ---------- minimized sections ---------- */
+
+button.collapse { padding: 3px 9px; min-width: 34px; }
+.panel.collapsed > :not(.panel-head) { display: none !important; }
+.panel.collapsed > .panel-head { margin-bottom: 0; }
+.panel.collapsed > .panel-head > .muted { display: none; }
+
+/* Cards written out as text. */
+.ct { display: inline-block; padding: 0 5px; margin: 1px 2px; border-radius: 5px; background: #f2f2f2; color: #24343a; font-size: 17px; line-height: 1.3; white-space: nowrap; }
+.ct-h, .ct-d { color: #d6283c; }
+.ct-x { color: #8a6d1e; }
+.ct small { font-size: 12px; color: #5a6b6e; margin-left: 3px; }
+.play .ctext { margin-left: 6px; align-self: center; }
+.adv .why { font-size: 15px; margin-top: 2px; }
 
 /* ---------- discard advice ---------- */
 

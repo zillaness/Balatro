@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
-  file: index.html (Balatro Calculator v1.5)
-  version: 1.5
+  file: index.html (Balatro Calculator v1.6)
+  version: 1.6
   author: Sam Cao
   created: 2026-10-21
   last_updated: 2026-10-21
@@ -59,6 +59,8 @@
 }
 
 * { box-sizing: border-box; }
+/* hidden must win over any display rule (#entry is a grid, drawers are flex...). */
+[hidden] { display: none !important; }
 
 html, body { margin: 0; }
 
@@ -183,7 +185,7 @@ main {
 }
 #jokers-panel { grid-area: jokers; }
 #hand-panel { grid-area: hand; }
-#plays-panel { grid-area: plays; }
+#results-col { grid-area: plays; display: grid; gap: 12px; align-content: start; min-width: 0; }
 #levels-panel { grid-area: levels; align-self: start; }
 
 .panel {
@@ -421,6 +423,21 @@ button:disabled { opacity: .45; cursor: default; }
 .play { cursor: pointer; }
 .play.sel { box-shadow: inset 0 0 0 2px var(--money); }
 
+/* ---------- minimized sections ---------- */
+
+button.collapse { padding: 3px 9px; min-width: 34px; }
+.panel.collapsed > :not(.panel-head) { display: none !important; }
+.panel.collapsed > .panel-head { margin-bottom: 0; }
+.panel.collapsed > .panel-head > .muted { display: none; }
+
+/* Cards written out as text. */
+.ct { display: inline-block; padding: 0 5px; margin: 1px 2px; border-radius: 5px; background: #f2f2f2; color: #24343a; font-size: 17px; line-height: 1.3; white-space: nowrap; }
+.ct-h, .ct-d { color: #d6283c; }
+.ct-x { color: #8a6d1e; }
+.ct small { font-size: 12px; color: #5a6b6e; margin-left: 3px; }
+.play .ctext { margin-left: 6px; align-self: center; }
+.adv .why { font-size: 15px; margin-top: 2px; }
+
 /* ---------- discard advice ---------- */
 
 #advice { display: grid; gap: 8px; }
@@ -644,13 +661,14 @@ footer a { color: var(--muted); }
 <div id="run-strip" aria-live="polite"></div>
 
 <main>
-  <section id="jokers-panel" class="panel">
+  <section id="jokers-panel" class="panel" data-panel="jokers">
     <div class="panel-head">
       <h2>Jokers <span id="joker-count" class="muted"></span></h2>
       <span class="muted">click to edit · drag to reorder · drag off to remove</span>
       <span class="spacer"></span>
       <button class="blue" data-act="optimize" title="Try joker orders and find the one that scores most">Optimize order</button>
       <button data-act="open-picker">+ Add joker</button>
+      <button class="collapse" data-act="collapse" data-panel="jokers" aria-expanded="true" title="Minimize">▾</button>
     </div>
     <div id="joker-row" class="row"></div>
     <div id="order-result"></div>
@@ -659,24 +677,36 @@ footer a { color: var(--muted); }
   <section id="hand-panel" class="panel">
     <div class="panel-head">
       <h2>Hand <span id="hand-count" class="muted"></span></h2>
-      <span class="muted">click a card to change it · drag to reorder · outlined = cards to play</span>
+      <span class="muted">click a card to change it · drag to reorder · <span class="chips-c" style="color:var(--money)">gold</span> = play · <span class="mult-c">red</span> = discard</span>
       <span class="spacer"></span>
       <button data-act="clear-hand">Clear hand</button>
+      <button class="collapse" data-act="collapse" data-panel="entry" aria-expanded="true" title="Hide the card entry buttons">Entry ▾</button>
     </div>
     <div id="hand-row" class="row"></div>
     <div id="advice-mini" hidden></div>
     <div id="entry"></div>
   </section>
 
-  <section id="plays-panel" class="panel">
-    <div class="panel-head"><h2>Discard or play?</h2><span class="muted">hover an option to see which cards</span></div>
-    <div id="advice"></div>
-    <div class="panel-head" style="margin-top:14px"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span></div>
-    <div id="plays"></div>
-  </section>
+  <div id="results-col">
+    <section id="advice-panel" class="panel" data-panel="advice">
+      <div class="panel-head"><h2>Discard or play?</h2><span class="muted">hover an option to see which cards</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="advice" aria-expanded="true" title="Minimize">▾</button></div>
+      <div id="advice">
+        <div class="round">
+          <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" placeholder="?"></label>
+          <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands"></label>
+          <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards"></label>
+        </div>
+        <div id="advice-body"></div>
+      </div>
+    </section>
+    <section id="plays-panel" class="panel" data-panel="plays">
+      <div class="panel-head"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="plays" aria-expanded="true" title="Minimize">▾</button></div>
+      <div id="plays"></div>
+    </section>
+  </div>
 
-  <aside id="levels-panel" class="panel">
-    <div class="panel-head"><h2>Hand levels</h2><span class="spacer"></span><button class="blue" data-act="black-hole" title="Black Hole: +1 level to every hand">Black Hole</button></div>
+  <aside id="levels-panel" class="panel" data-panel="levels">
+    <div class="panel-head"><h2>Hand levels</h2><span class="spacer"></span><button class="blue" data-act="black-hole" title="Black Hole: +1 level to every hand">Black Hole</button><button class="collapse" data-act="collapse" data-panel="levels" aria-expanded="true" title="Minimize">▾</button></div>
     <div id="levels"></div>
   </aside>
 </main>
@@ -4802,6 +4832,8 @@ const Sprites = (() => {
       flags: { theFlint: false, theEye: false, plasma: false, observatory: false },
       tierOverrides: {},
       run: null,
+      // Minimized sections (per viewer).
+      ui: { collapsed: {} },
       // Round for discard advice; filled from a save when one is loaded.
       round: { need: null, hands: 4, discards: 3, handSize: 8 },
       deck: null
@@ -4812,7 +4844,7 @@ const Sprites = (() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY));
       if (saved && Array.isArray(saved.jokers) && Array.isArray(saved.hand) && saved.levels?.length === 12) {
-        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) } };
+        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) }, ui: { collapsed: {}, ...(saved.ui || {}) } };
       }
     } catch (e) { /* private mode or bad data: start fresh */ }
     return freshState();
@@ -4832,9 +4864,8 @@ const Sprites = (() => {
     renderHand();
     renderLevels();
     if (opt.result && !opt.result.applied && !opt.running) renderOrderResult();
-    if (plays) scheduleAdvice();
     else if (opt.result?.applied) { opt.result = null; renderOrderResult(); }
-    if (plays) schedulePlays();
+    if (plays) { schedulePlays(); scheduleAdvice(); }
   }
 
   // ---------- worker ----------
@@ -5165,7 +5196,9 @@ const Sprites = (() => {
   // ---------- discard advice ----------
 
   let advPool = [];
-  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [] };
+  // recommend: the discard the advice suggests (outlined red in the hand), or null when it says play.
+  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [], recommend: null };
+  let playHover = false;
   const ADV_SAMPLES = 240;
 
   function killAdvPool() { advPool.forEach(w => w.terminate()); advPool = []; }
@@ -5189,6 +5222,7 @@ const Sprites = (() => {
   function scheduleAdvice() {
     clearTimeout(adv.timer);
     adv.reqId++;
+    adv.recommend = null;
     killAdvPool();
     adv.running = state.hand.length > 0;
     renderAdvice();
@@ -5197,6 +5231,8 @@ const Sprites = (() => {
 
   function runAdvice() {
     const id = adv.reqId;
+    if (adv.started === id) return;
+    adv.started = id;
     const r = state.round;
     const round = {
       need: r.need > 0 ? r.need : Infinity,
@@ -5222,6 +5258,7 @@ const Sprites = (() => {
           const m = ev.data;
           if (m.reqId !== id) return;
           if (m.error) { adv.running = false; adv.result = { error: m.error }; renderAdvice(); return; }
+          if (!m.results) return;
           results.push(...m.results);
           if (++done === parts) { adv.running = false; adv.result = { results, round, deckFrom: drawPile().from, deckSize: deck.length }; renderAdvice(); }
         };
@@ -5232,6 +5269,11 @@ const Sprites = (() => {
   }
 
   const pct = x => `${Math.round(x * 100)}%`;
+  const shortCard = c => `${A.normalizeRank(c.rank)}${c.suit ? SUIT_SYMBOL[c.suit] : '?'}`;
+  // Cards written out (pictures are hard to read at small sizes): "K♠ Q♥", red for hearts and diamonds.
+  const cardChips = cards => cards.map(c => `<span class="ct ct-${c.suit || 'x'}">${esc(shortCard(c))}${c.enhancement ? `<small>${esc(c.enhancement)}</small>` : ''}</span>`).join('');
+  const cardList = idx => idx.map(i => state.hand[i]).filter(Boolean).map(shortCard).join(' ');
+  const keptList = idx => state.hand.filter((_, i) => !idx.includes(i)).map(shortCard).join(' ');
 
   function optionLabel(o) {
     if (o.play) {
@@ -5239,7 +5281,8 @@ const Sprites = (() => {
       return `<b>Play now</b>${p ? ` <span class="muted">${A.HAND_NAMES[p.handType]}, ${fmtBig(p.low)}</span>` : ''}`;
     }
     const cards = o.discard.map(i => state.hand[i]).filter(Boolean);
-    return `<b>Discard ${cards.length}</b> <span class="mini">${cards.map(c => Sprites.card(c)).join('')}</span> <span class="muted">${esc(o.why)}</span>`;
+    const kept = state.hand.filter((_, i) => !o.discard.includes(i));
+    return `<b>Discard</b> ${cardChips(cards)} <span class="muted">keep</span> ${cardChips(kept)}<div class="muted why">${esc(o.why)}</div>`;
   }
 
   function typeOdds(o) {
@@ -5248,16 +5291,18 @@ const Sprites = (() => {
   }
 
   function renderAdvice() {
-    const box = $('#advice');
+    const box = $('#advice-body');
     const mini = $('#advice-mini');
     if (!box) return;
     mini.hidden = true;
+    // The round inputs are static (re-creating them while typing would blur them and fire change again);
+    // only fill in values for boxes you aren't editing.
     const r = state.round;
-    const inputs = `<div class="round">
-        <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" value="${r.need ?? ''}" placeholder="?"></label>
-        <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands" value="${r.hands}"></label>
-        <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards" value="${r.discards}"></label>
-      </div>`;
+    for (const [id, v] of [['round-need', r.need ?? ''], ['round-hands', r.hands], ['round-discards', r.discards]]) {
+      const el = $('#' + id);
+      if (el && document.activeElement !== el) el.value = v;
+    }
+    const inputs = '';
     if (!state.hand.length) { box.innerHTML = inputs + '<div class="muted">Add your hand to get discard advice.</div>'; return; }
     const res = adv.result;
     if (adv.running || !res) { box.innerHTML = inputs + `<div class="muted">Simulating draws…</div>`; return; }
@@ -5269,19 +5314,26 @@ const Sprites = (() => {
     const top = sorted[0];
     const nowScore = lastPlays[0] ? lastPlays[0].low[0] * 10 ** lastPlays[0].low[1] : 0;
     let headline;
+    let recommend = null;
     if (known && nowScore >= res.round.need) headline = `<b>Play now.</b> Your best play scores ${fmtBig(lastPlays[0].low)}, enough to clear the blind.`;
     else if (!res.round.discards) headline = `<b>Play now.</b> No discards left.`;
     else if (known) {
-      headline = top.play || top.clear - play.clear < 0.05
+      if (!top.play && top.clear - play.clear >= 0.05) recommend = top;
+      headline = !recommend
         ? `<b>Play now.</b> Discarding doesn't clearly help (best discard ${pct(sorted.find(o => !o.play)?.clear ?? 0)} vs ${pct(play.clear)} to clear).`
-        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
+        : `<b>Discard ${cardList(top.discard)}</b>, keep ${keptList(top.discard)} to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
     } else {
-      headline = top.play || top.meanNext < play.meanNext * 1.1
+      if (!top.play && top.meanNext >= play.meanNext * 1.1) recommend = top;
+      headline = !recommend
         ? `<b>Play now.</b> No discard clearly improves your next hand. Enter chips needed for a clear-the-blind estimate.`
-        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
+        : `<b>Discard ${cardList(top.discard)}</b>, keep ${keptList(top.discard)} to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
     }
     const shown = sorted.slice(0, 3);
     if (!shown.includes(play)) shown.push(play);
+    // Outline the suggested discards in the hand (red) instead of the best play (gold).
+    const prev = adv.recommend?.discard?.join() || '';
+    adv.recommend = recommend;
+    if ((recommend?.discard?.join() || '') !== prev) renderHand();
     // The same headline under the hand, so the advice is visible without scrolling.
     mini.hidden = false;
     mini.innerHTML = `<span class="tag-adv">Advice</span> ${headline} <a href="#plays-panel" class="muted">details</a>`;
@@ -5396,7 +5448,11 @@ const Sprites = (() => {
       row.innerHTML = `<div class="empty-hint">Type ranks to add cards (<kbd>K</kbd> <kbd>Q</kbd> <kbd>7</kbd>), with a suit if you know it (<kbd>K</kbd> <kbd>h</kbd>), or paste a hand like <kbd>AH KC 10D</kbd>. Set suits and modifiers later by clicking a card.</div>`;
       return;
     }
-    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${adv.hover.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
+    // Red = cards to discard (hovered option, else the recommendation); gold = cards to play, shown when
+    // the advice says play or when you point at or pick a play.
+    const dis = adv.hover.length ? adv.hover : adv.recommend?.discard || [];
+    const showPlay = playHover || selectedPlay !== 0 || !dis.length;
+    row.innerHTML = state.hand.map((c, i) => `<div class="slot${showPlay && highlight.includes(i) ? ' hl' : ''}${dis.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
   }
 
   // ---------- card entry ----------
@@ -5592,7 +5648,7 @@ const Sprites = (() => {
         <div class="rank-n">${n + 1}</div>
         <div>
           <div><span class="name">${A.HAND_NAMES[p.handType]}</span> <span class="lvl">lvl ${lvl}</span></div>
-          <div class="mini">${cards.map(c => Sprites.card(c)).join('')}</div>
+          <div class="mini">${cards.map(c => Sprites.card(c)).join('')}<span class="ctext">${cardChips(cards)}</span></div>
         </div>
         <div class="score">
           <div class="big">${fmtBig(p.low)}</div>
@@ -6048,6 +6104,20 @@ const Sprites = (() => {
         <button data-act="reset-tiers">Reset tier edits</button><button class="primary" data-act="new-run">New run (clear everything)</button></div>`;
   }
 
+  // ---------- minimized sections ----------
+
+  function applyCollapsed() {
+    for (const b of $$('[data-act=collapse]')) {
+      const key = b.dataset.panel;
+      const shut = !!state.ui.collapsed[key];
+      b.setAttribute('aria-expanded', String(!shut));
+      b.textContent = key === 'entry' ? (shut ? 'Entry ▸' : 'Entry ▾') : (shut ? '▸' : '▾');
+      b.title = shut ? 'Expand' : (key === 'entry' ? 'Hide the card entry buttons' : 'Minimize');
+      if (key === 'entry') $('#entry').hidden = shut;
+      else document.querySelector(`.panel[data-panel="${key}"]`)?.classList.toggle('collapsed', shut);
+    }
+  }
+
   // ---------- toast ----------
 
   let toastTimer = null;
@@ -6096,7 +6166,7 @@ const Sprites = (() => {
             setTimeout(() => { if (actEl.isConnected) { actEl.dataset.armed = ''; actEl.textContent = 'New run (clear everything)'; } }, 3000);
             return;
           }
-          state = { ...freshState(), tierOverrides: state.tierOverrides };
+          state = { ...freshState(), tierOverrides: state.tierOverrides, ui: state.ui };
           resetEntry(); renderEntry(); changed(); renderSettings(); toast('Cleared. New run.');
         }
         return;
@@ -6131,6 +6201,7 @@ const Sprites = (() => {
       const cslot = e.target.closest('#hand-row .slot');
       if (cslot) return openCardEditor(cslot.dataset.uid, cslot);
       if (act === 'clear-hand' && state.hand.length) { state.hand = []; changed(); return; }
+      if (act === 'collapse') { const k = actEl.dataset.panel; state.ui.collapsed[k] = !state.ui.collapsed[k]; save(); applyCollapsed(); return; }
       if (act === 'optimize') return optimize();
       if (act === 'apply-order') return applyOrder();
       if (act === 'dismiss-order') { opt.result = null; renderOrderResult(); return; }
@@ -6190,7 +6261,7 @@ const Sprites = (() => {
       if (dis.join() !== adv.hover.join()) { adv.hover = dis; renderHand(); }
       const play = e.target.closest('.play');
       const next = (play ? lastPlays[+play.dataset.n] : lastPlays[selectedPlay])?.order || [];
-      if (next.join() !== highlight.join()) { highlight = next; renderHand(); }
+      if (next.join() !== highlight.join() || !!play !== playHover) { highlight = next; playHover = !!play; renderHand(); }
     });
 
     // Pasting a hand ("AH KC 10D") anywhere outside a text box adds those cards.
@@ -6232,6 +6303,7 @@ const Sprites = (() => {
     renderEntry();
     renderPlays();
     renderRun();
+    applyCollapsed();
     changed();
   }
 
@@ -6257,4 +6329,6 @@ const Sprites = (() => {
   v1.4.2 (2026-10-21): Visible save drop box at the top of the page; help explains opening AppData with Win+R or the file dialog.
   v1.4.3 (2026-10-21): Load again renamed Reload save, with a note that the file picker reopens the last folder.
   v1.5 (2026-10-21): Discard advice: compares playing now with sensible discards by simulating the rest of the blind from your draw pile; shows chance to clear, next-hand odds, and outlines the cards to discard. Chips, hands, and discards come from the save. Verified on a real save.
+  v1.5.1 (2026-10-21): Advice names the cards to discard and to keep, and outlines the discards in red in your hand.
+  v1.6 (2026-10-21): Cards written out as text in advice and best plays. Sections can be minimized (remembered). Fixed advice running twice when chips needed was edited.
 -->

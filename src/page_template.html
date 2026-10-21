@@ -27,13 +27,14 @@
 <div id="run-strip" aria-live="polite"></div>
 
 <main>
-  <section id="jokers-panel" class="panel">
+  <section id="jokers-panel" class="panel" data-panel="jokers">
     <div class="panel-head">
       <h2>Jokers <span id="joker-count" class="muted"></span></h2>
       <span class="muted">click to edit · drag to reorder · drag off to remove</span>
       <span class="spacer"></span>
       <button class="blue" data-act="optimize" title="Try joker orders and find the one that scores most">Optimize order</button>
       <button data-act="open-picker">+ Add joker</button>
+      <button class="collapse" data-act="collapse" data-panel="jokers" aria-expanded="true" title="Minimize">▾</button>
     </div>
     <div id="joker-row" class="row"></div>
     <div id="order-result"></div>
@@ -42,24 +43,36 @@
   <section id="hand-panel" class="panel">
     <div class="panel-head">
       <h2>Hand <span id="hand-count" class="muted"></span></h2>
-      <span class="muted">click a card to change it · drag to reorder · outlined = cards to play</span>
+      <span class="muted">click a card to change it · drag to reorder · <span class="chips-c" style="color:var(--money)">gold</span> = play · <span class="mult-c">red</span> = discard</span>
       <span class="spacer"></span>
       <button data-act="clear-hand">Clear hand</button>
+      <button class="collapse" data-act="collapse" data-panel="entry" aria-expanded="true" title="Hide the card entry buttons">Entry ▾</button>
     </div>
     <div id="hand-row" class="row"></div>
     <div id="advice-mini" hidden></div>
     <div id="entry"></div>
   </section>
 
-  <section id="plays-panel" class="panel">
-    <div class="panel-head"><h2>Discard or play?</h2><span class="muted">hover an option to see which cards</span></div>
-    <div id="advice"></div>
-    <div class="panel-head" style="margin-top:14px"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span></div>
-    <div id="plays"></div>
-  </section>
+  <div id="results-col">
+    <section id="advice-panel" class="panel" data-panel="advice">
+      <div class="panel-head"><h2>Discard or play?</h2><span class="muted">hover an option to see which cards</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="advice" aria-expanded="true" title="Minimize">▾</button></div>
+      <div id="advice">
+        <div class="round">
+          <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" placeholder="?"></label>
+          <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands"></label>
+          <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards"></label>
+        </div>
+        <div id="advice-body"></div>
+      </div>
+    </section>
+    <section id="plays-panel" class="panel" data-panel="plays">
+      <div class="panel-head"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="plays" aria-expanded="true" title="Minimize">▾</button></div>
+      <div id="plays"></div>
+    </section>
+  </div>
 
-  <aside id="levels-panel" class="panel">
-    <div class="panel-head"><h2>Hand levels</h2><span class="spacer"></span><button class="blue" data-act="black-hole" title="Black Hole: +1 level to every hand">Black Hole</button></div>
+  <aside id="levels-panel" class="panel" data-panel="levels">
+    <div class="panel-head"><h2>Hand levels</h2><span class="spacer"></span><button class="blue" data-act="black-hole" title="Black Hole: +1 level to every hand">Black Hole</button><button class="collapse" data-act="collapse" data-panel="levels" aria-expanded="true" title="Minimize">▾</button></div>
     <div id="levels"></div>
   </aside>
 </main>
