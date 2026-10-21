@@ -1,6 +1,6 @@
 /**
  * @file regression.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-20
  * @lastUpdated 2026-10-20
@@ -221,7 +221,16 @@ function main() {
   failures += easy.clear === 1 ? 0 : 1;
   console.log(`${easy.clear === 1 ? 'ok  ' : 'FAIL'}  advice: a play that clears the blind clears it every time`);
 
-  const total = CASES.length + ORDER_CASES.length + 4;
+  // Purchase advice: a lineup's value is the weighted mean log10 score. K♠ K♥ pair at level 1 is 30 chips x 2 mult = 60;
+  // adding Joker (+4 Mult) makes 30 x 6 = 180, so it should be worth exactly log10(3) more. A held card stays out of the play.
+  const pairEnc = A.encodeState({ hand: [{ rank: 'K', suit: 's' }, { rank: 'K', suit: 'h' }, { rank: '2', suit: 'c' }] });
+  const base = { hands: pairEnc.hands, TheFlint: false, TheEye: false, PlasmaDeck: false, Observatory: false };
+  const [v0, v1] = S.lineupValues(base, [{ cards: pairEnc.cards, play: [0, 1] }], [1], [{ jokers: [] }, { jokers: [A.encodeJoker({ id: 0 }, 0)] }]);
+  const lineupOk = Math.abs(v0 - Math.log10(60)) < 1e-9 && Math.abs(v1 - v0 - Math.log10(3)) < 1e-9;
+  failures += lineupOk ? 0 : 1;
+  console.log(`${lineupOk ? 'ok  ' : 'FAIL'}  purchase advice: Joker turns a 60-point pair into 180 (${(10 ** v0).toFixed(0)} -> ${(10 ** v1).toFixed(0)})`);
+
+  const total = CASES.length + ORDER_CASES.length + 5;
   console.log(`\n${total - failures}/${total} passed in ${Date.now() - t0} ms`);
   process.exit(failures ? 1 : 0);
 }
@@ -230,4 +239,5 @@ main();
 
 /** CHANGELOG
  * v1.0 (2026-10-20): 20 best-play cases and 3 joker-order cases against upstream 55322d5.
+ * v1.1 (2026-10-21): Fast-best agreement, discard advice, and purchase-advice lineup value checks.
  */

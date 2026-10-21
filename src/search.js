@@ -1,10 +1,10 @@
 /**
  * @file search.js
- * @version 1.2
+ * @version 1.3
  * @author Sam Cao
  * @created 2026-10-20
- * @lastUpdated 2026-10-20
- * @description Searches card plays and joker orders with the vendored engine; ranks plays and returns per-play detail.
+ * @lastUpdated 2026-10-21
+ * @description Searches card plays and joker orders with the vendored engine; ranks plays, advises discards, and rates purchases.
  * @aiUpdate Update @lastUpdated and @version. Append changelog at bottom.
  */
 'use strict';
@@ -535,10 +535,27 @@ const BalatroSearch = (() => {
     });
   }
 
+  // ---- purchase advice ----
+
+  // Each lineup's weighted mean log10 guaranteed score over the same sample plays, so lineups (with a shop joker in
+  // some slot, or a planet's extra level) compare on identical cards. samples: [{cards, play}] with play the card
+  // indexes to play (the rest are held); jobs: [{jokers, hands?}].
+  function lineupValues(base, samples, weights, jobs) {
+    return jobs.map(job => {
+      let v = 0;
+      samples.forEach((s, k) => {
+        const enc = { ...base, hands: job.hands || base.hands, cards: s.cards, jokers: job.jokers };
+        const [p] = evaluateSubsets(enc, job.jokers, { only: [s.play] });
+        v += weights[k] * log10Big(p.worst);
+      });
+      return v;
+    });
+  }
+
   return {
     choose, permutations, cmpBig, cmpPlay, evaluateSubsets, detailPlay, bestPlays, bestJokerOrder, bestPlayFor,
     distinctOrders, countDistinctOrders, scanOrders, climbOrders, log10Big,
-    scoringSubsets, fastBest, discardOptions, adviseOptions, rollout
+    scoringSubsets, fastBest, discardOptions, adviseOptions, rollout, lineupValues
   };
 })();
 
@@ -546,4 +563,7 @@ if (typeof module !== 'undefined') module.exports = BalatroSearch;
 
 /** CHANGELOG
  * v1.0 (2026-10-20): Initial search: subset and play-order search, ranked plays by hand type, joker-order search.
+ * v1.1 (2026-10-21): Distinct joker orders scanned in slices across workers; hill climbing for 8+ jokers; sample hands.
+ * v1.2 (2026-10-21): Discard advice: scoring subsets, fast best play, seeded rollouts over the draw pile.
+ * v1.3 (2026-10-21): lineupValues for purchase advice: weighted mean log score of lineups over shared sample plays.
  */

@@ -1,6 +1,6 @@
 /**
  * @file save_fixture.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -69,11 +69,46 @@ const SAVE = {
   VERSION: '1.0.1o'
 };
 
+// A save taken in the shop: a clubs-heavy deck, Flush played most, and a shop offering one joker per suit,
+// two planets, a voucher, and a pack.
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+const shopCard = (center, set, cost, ability = {}) => ({ save_fields: { center }, ability: { set, ...ability }, cost, sell_cost: Math.floor(cost / 2) });
+const SHOP_SAVE = {
+  cardAreas: {
+    jokers: { config: { card_limit: 5 }, cards: [joker('j_joker'), joker('j_jolly'), joker('j_droll'), joker('j_blueprint')] },
+    hand: { config: { card_limit: 8 }, cards: [] },
+    deck: { config: { card_limit: 52 }, cards: [
+      ...RANKS.map(r => card('C_' + r)),
+      ...['H', 'D', 'S'].flatMap(su => ['A', 'K', '9', '5'].map(r => card(su + '_' + r)))
+    ] },
+    consumeables: { cards: [] },
+    shop_jokers: { cards: [
+      shopCard('j_gluttenous_joker', 'Joker', 5),
+      shopCard('j_greedy_joker', 'Joker', 5),
+      shopCard('c_jupiter', 'Planet', 3, { consumeable: { hand_type: 'Flush' } }),
+      shopCard('c_pluto', 'Planet', 3, { consumeable: { hand_type: 'High Card' } })
+    ] },
+    shop_vouchers: { cards: [shopCard('v_overstock_norm', 'Voucher', 10, { name: 'Overstock' })] },
+    shop_booster: { cards: [shopCard('p_arcana_normal_1', 'Booster', 4, { name: 'Arcana Pack' })] }
+  },
+  GAME: {
+    dollars: 9, chips: 0, skips: 0, starting_deck_size: 52,
+    round_resets: { ante: 2, hands: 4, discards: 3 },
+    current_round: { hands_left: 0, discards_left: 1 },
+    hands: { 'Flush': { level: 3, played: 12, played_this_round: 0 }, 'Pair': { level: 1, played: 6, played_this_round: 0 } }
+  },
+  BLIND: { name: 'Big Blind', chips: 800 },
+  BACK: { name: 'Red Deck' },
+  STATE: 5,
+  VERSION: '1.0.1o'
+};
+
 // save.jkr bytes: raw DEFLATE, as love.data.compress('deflate') writes them.
 const saveBytes = (save = SAVE) => zlib.deflateRawSync(Buffer.from(strPack(save)), { level: 1 });
 
-module.exports = { strPack, SAVE, card, joker, saveBytes };
+module.exports = { strPack, SAVE, SHOP_SAVE, card, joker, saveBytes };
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Moved out of save_test.js so the UI test can drop the same save.
+ * v1.1 (2026-10-21): SHOP_SAVE, a save taken in the shop.
  */

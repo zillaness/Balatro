@@ -69,6 +69,19 @@
       <div class="panel-head"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="plays" aria-expanded="true" title="Minimize">▾</button></div>
       <div id="plays"></div>
     </section>
+    <section id="shop-panel" class="panel" data-panel="shop">
+      <div class="panel-head"><h2>Shop: what to buy</h2><span class="muted">rated on the hands you play</span><span class="spacer"></span><button class="collapse" data-act="collapse" data-panel="shop" aria-expanded="true" title="Minimize">▾</button></div>
+      <div id="shop">
+        <div class="round">
+          <button data-act="shop-add" title="Pick a joker the shop offers">+ Joker</button>
+          <select id="shop-planet" data-act="shop-planet" title="Add a planet the shop offers"></select>
+          <label>Money $<input type="number" min="0" id="shop-money" placeholder="?"></label>
+          <label>Joker slots <input type="number" min="1" id="shop-slots"></label>
+          <label>Rate for <select id="shop-focus"></select></label>
+        </div>
+        <div id="shop-body"></div>
+      </div>
+    </section>
   </div>
 
   <aside id="levels-panel" class="panel" data-panel="levels">
@@ -87,6 +100,7 @@
 <div id="picker" class="drawer" hidden>
   <div class="drawer-head">
     <input id="picker-search" type="search" placeholder="Search name, rules, or what it looks like: banana, green dice, crown…" autocomplete="off">
+    <span id="picker-mode" hidden>Adding to the shop list</span>
     <button data-act="close-picker">Close <kbd>Esc</kbd></button>
   </div>
   <div id="picker-tiers" class="filters"></div>

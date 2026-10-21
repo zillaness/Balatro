@@ -1,9 +1,9 @@
 /**
  * @file adapter.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-20
- * @lastUpdated 2026-10-20
+ * @lastUpdated 2026-10-21
  * @description Translates calculator state (named ranks, suits, modifiers) to and from the vendored engine's array encoding.
  * @aiUpdate Update @lastUpdated and @version. Append changelog at bottom.
  */
@@ -122,7 +122,7 @@ const BalatroAdapter = (() => {
   }
 
   return {
-    RANKS, RANK_NAMES, SUITS, SUIT_NAMES, ENHANCEMENTS, EDITIONS, SEALS, HAND_NAMES, PLANETS, HAND_BASE,
+    RANKS, RANK_NAMES, SUITS, SUIT_NAMES, ENHANCEMENTS, EDITIONS, SEALS, HAND_NAMES, PLANETS, HAND_BASE, EDITION_COST,
     normalizeRank, encodeCard, encodeJoker, encodeLevels, encodeState, defaultLevels, defaultSellValue, handBase,
     bigToNumber, cardLabel
   };
@@ -132,4 +132,5 @@ if (typeof module !== 'undefined') module.exports = BalatroAdapter;
 
 /** CHANGELOG
  * v1.0 (2026-10-20): Initial adapter: card, joker, and hand-level encoding for vendored engine 55322d5.
+ * v1.1 (2026-10-21): Exports EDITION_COST for shop prices.
  */

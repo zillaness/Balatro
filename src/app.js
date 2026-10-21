@@ -1,10 +1,10 @@
 /**
  * @file app.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
- * @description Calculator UI: state, rendering, card entry, joker and card editors, picker, hand levels, drag and drop, worker calls.
+ * @description Calculator UI: state, rendering, card entry, joker and card editors, picker, hand levels, drag and drop, save import, discard and purchase advice, worker calls.
  * @aiUpdate Update @lastUpdated and @version. Append changelog at bottom.
  */
 'use strict';
@@ -90,7 +90,11 @@ Mac: ~/Library/Application Support/Balatro/1
       ui: { collapsed: {} },
       // Round for discard advice; filled from a save when one is loaded.
       round: { need: null, hands: 4, discards: 3, handSize: 8 },
-      deck: null
+      deck: null,
+      // Every card in the run's deck (from a save), for dealing example plays when rating purchases.
+      fullDeck: null,
+      // Shop offers to rate. focus: a hand type to rate on instead of the played mix; slots and money override the save's.
+      shop: { items: [], focus: null, slots: null, money: null }
     };
   }
 
@@ -98,7 +102,8 @@ Mac: ~/Library/Application Support/Balatro/1
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY));
       if (saved && Array.isArray(saved.jokers) && Array.isArray(saved.hand) && saved.levels?.length === 12) {
-        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) }, ui: { collapsed: {}, ...(saved.ui || {}) } };
+        const fresh = freshState();
+        return { ...fresh, ...saved, round: { ...fresh.round, ...(saved.round || {}) }, ui: { collapsed: {}, ...(saved.ui || {}) }, shop: { ...fresh.shop, ...(saved.shop || {}) } };
       }
     } catch (e) { /* private mode or bad data: start fresh */ }
     return freshState();
@@ -119,7 +124,8 @@ Mac: ~/Library/Application Support/Balatro/1
     renderLevels();
     if (opt.result && !opt.result.applied && !opt.running) renderOrderResult();
     else if (opt.result?.applied) { opt.result = null; renderOrderResult(); }
-    if (plays) { schedulePlays(); scheduleAdvice(); }
+    if (plays) { schedulePlays(); scheduleAdvice(); scheduleShop(); }
+    placeShop();
   }
 
   // ---------- worker ----------
@@ -375,6 +381,13 @@ Mac: ~/Library/Application Support/Balatro/1
       state.flags = r.flags;
       state.run = { ...r.run, file: file.name, loadedAt: Date.now(), fileTime: file.lastModified || null, warnings: r.warnings };
       state.deck = r.drawPile.map(c => ({ ...c }));
+      state.fullDeck = r.fullDeck.map(c => ({ ...c, debuffed: false }));
+      // A save taken in the shop replaces the shop list; otherwise offers from an older save go and typed-in ones stay.
+      state.shop.items = r.shop.length
+        ? r.shop.map(it => ({ ...it, sid: uid(), source: 'save' }))
+        : state.shop.items.filter(it => it.source !== 'save');
+      state.shop.money = null;
+      state.shop.slots = null;
       state.round = {
         need: r.run.chipsNeeded != null ? Math.max(0, r.run.chipsNeeded - (r.run.chipsScored || 0)) : state.round.need,
         hands: r.run.handsLeft ?? state.round.hands,
@@ -387,7 +400,12 @@ Mac: ~/Library/Application Support/Balatro/1
       renderOrderResult();
       changed();
       renderRun();
-      toast(`Loaded ${state.jokers.length} jokers and ${state.hand.length} cards from ${file.name}`);
+      const offers = r.shop.filter(it => it.kind !== 'other').length;
+      toast(`Loaded ${state.jokers.length} jokers and ${state.hand.length} cards from ${file.name}${r.run.inShop ? `, and ${offers} shop offers to rate` : ''}`);
+      if (r.run.inShop) {
+        if (state.ui.collapsed.shop) { state.ui.collapsed.shop = false; applyCollapsed(); }
+        $('#shop-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
     } catch (e) {
       toast(`Couldn't read ${file.name}: ${e.message}`);
       state.run = { error: e.message, file: file.name, loadedAt: Date.now() };
@@ -608,6 +626,334 @@ Mac: ~/Library/Application Support/Balatro/1
     state.round[k] = k === 'need' ? (v || null) : (v ?? state.round[k]);
     save();
     scheduleAdvice();
+  }
+
+  // ---------- purchase advice ----------
+
+  // Rates shop jokers and planets by how much they raise your score on the hands this run plays: example plays of
+  // those hand types are dealt from your own deck (so suit and rank jokers count), and every lineup is scored on the
+  // same plays. A joker is tried in every slot, or in place of each joker when the slots are full.
+  let shopPool = [];
+  const shopRun = { reqId: 0, timer: null, result: null, running: false, sig: null };
+  const SHOP_PER_TYPE = 10;
+  const SHOP_HELD = 3;
+  const CONSTELLATION = 109;
+  const STENCIL = 52;
+  // Straights by rank index (A.RANKS: 2 = 0 ... A = 12), ace-low first.
+  const STRAIGHTS = [[12, 0, 1, 2, 3], ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => [k, k + 1, k + 2, k + 3, k + 4])];
+
+  function killShopPool() { shopPool.forEach(w => w.terminate()); shopPool = []; }
+  function getShopPool() {
+    if (!shopPool.length) {
+      const n = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
+      for (let i = 0; i < n; i++) shopPool.push(new Worker(workerUrl));
+    }
+    return shopPool;
+  }
+
+  const shopSlots = () => state.shop.slots ?? state.run?.jokerSlots ?? Math.max(5, state.jokers.length);
+  const shopMoney = () => state.shop.money ?? state.run?.dollars ?? null;
+  const basePrice = id => jokerPrice[Math.floor(id / 10)]?.[id % 10] ?? 0;
+  const shopCost = it => it.cost ?? (it.kind === 'planet' ? 3 : basePrice(it.id) + (A.EDITION_COST[it.edition] || 0));
+  const shopName = it => (it.kind === 'joker' ? byId[it.id].name : it.kind === 'planet' ? A.PLANETS[it.hand] : it.name);
+
+  function seeded(seed) {
+    let x = seed >>> 0 || 1;
+    return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+  }
+  function shuffledCopy(arr, rand) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+
+  // An example play of hand type t made from cards in the deck, or null when the deck can't make one.
+  function deckPlay(t, deck, rand) {
+    const pick = (arr, n) => shuffledCopy(arr, rand).slice(0, n);
+    const normal = deck.filter(c => c.enhancement !== 'stone');
+    const byRank = groups => {
+      const g = {};
+      for (const c of groups) (g[A.normalizeRank(c.rank)] ||= []).push(c);
+      return g;
+    };
+    const ranks = byRank(normal);
+    const suits = Object.fromEntries(A.SUITS.map(su => [su, normal.filter(c => c.suit === su || c.enhancement === 'wild')]));
+    // A group with at least n cards, more likely the bigger it is.
+    const weighted = (groups, n) => {
+      const ok = Object.entries(groups).filter(([, g]) => g.length >= n);
+      let x = rand() * ok.reduce((a, [, g]) => a + g.length, 0);
+      for (const e of ok) if ((x -= e[1].length) < 0) return e;
+      return ok[ok.length - 1] || null;
+    };
+    const kinds = (groups, sizes) => {
+      const left = { ...groups };
+      const out = [];
+      for (const n of sizes) {
+        const e = weighted(left, n);
+        if (!e) return null;
+        out.push(...pick(e[1], n));
+        delete left[e[0]];
+      }
+      return out;
+    };
+    const straight = groups => {
+      const ok = STRAIGHTS.filter(w => w.every(r => groups[A.RANKS[r]]?.length));
+      return ok.length ? ok[Math.floor(rand() * ok.length)].map(r => pick(groups[A.RANKS[r]], 1)[0]) : null;
+    };
+    const inSomeSuit = f => {
+      for (const su of shuffledCopy(A.SUITS, rand)) { const p = f(byRank(suits[su])); if (p) return p; }
+      return null;
+    };
+    const SIZES = { 10: [2], 9: [2, 2], 8: [3], 5: [3, 2], 4: [4], 2: [5] };
+    if (SIZES[t]) return kinds(ranks, SIZES[t]);
+    if (t === 11) { const hi = normal.filter(c => A.RANKS.indexOf(A.normalizeRank(c.rank)) >= 8); return pick(hi.length ? hi : normal, 1); }
+    if (t === 6) { const e = weighted(suits, 5); return e && pick(e[1], 5); }
+    if (t === 7) return straight(ranks);
+    if (t === 3) return inSomeSuit(straight);
+    if (t === 1) return inSomeSuit(g => kinds(g, [3, 2]));
+    if (t === 0) return inSomeSuit(g => kinds(g, [5]));
+    return null;
+  }
+
+  // Which hand types to rate on: the ones this run plays most (up to 3, weighted by times played), or the one
+  // you picked. Each gets SHOP_PER_TYPE example plays dealt from your deck, plus SHOP_HELD cards held.
+  function shopProfile() {
+    const deck = (state.fullDeck?.length ? state.fullDeck : standardDeck()).filter(c => c.suit).map(c => ({ ...c, debuffed: false }));
+    let types;
+    if (state.shop.focus != null) types = [[state.shop.focus, 1]];
+    else {
+      types = state.levels.map((h, i) => [i, h.played || 0]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      if (!types.length) types = [[defaultHandType(), 1]];
+    }
+    const total = types.reduce((a, [, n]) => a + n, 0);
+    const rand = seeded(7);
+    const samples = [];
+    const weights = [];
+    for (const [t, n] of types) {
+      for (let k = 0; k < SHOP_PER_TYPE; k++) {
+        const play = deckPlay(t, deck, rand) || parseSample(SAMPLE_HANDS[t][k % 3]);
+        const held = shuffledCopy(deck.filter(c => !play.includes(c)), rand).slice(0, SHOP_HELD);
+        samples.push({ cards: [...play, ...held].map(A.encodeCard), play: play.map((_, i) => i) });
+        weights.push(n / total / SHOP_PER_TYPE);
+      }
+    }
+    return { types: types.map(([t, n]) => [t, n / total]), samples, weights, deckFrom: state.fullDeck?.length ? `your deck (${deck.length} cards)` : 'a standard deck' };
+  }
+
+  function standardDeck() {
+    const out = [];
+    for (const r of A.RANKS) for (const su of A.SUITS) out.push({ rank: r, suit: su });
+    return out;
+  }
+
+  // Joker Stencil's count is empty slots (counting each Stencil), so it changes with the lineup.
+  function encodeLineup(jokers, limit) {
+    const stencils = jokers.filter(j => j.id === STENCIL).length;
+    const empty = Math.max(0, limit - jokers.length + stencils - 1);
+    return jokers.map((j, i) => A.encodeJoker(j.id === STENCIL ? { ...j, value: empty } : j, i));
+  }
+
+  function shopVariants(it) {
+    const slots = shopSlots();
+    const cur = state.jokers;
+    if (it.kind === 'planet') {
+      const levels = state.levels.map((h, i) => (i === it.hand ? { ...h, level: h.level + 1 } : h));
+      // Using a planet also feeds Constellation.
+      const jokers = cur.map(j => (j.id === CONSTELLATION ? { ...j, value: (j.value || 0) + 1 } : j));
+      return [{ job: { jokers: encodeLineup(jokers, slots), hands: A.encodeLevels(levels) } }];
+    }
+    const cand = {
+      id: it.id, edition: it.edition || null,
+      value: it.value ?? state.run?.counters?.[it.id] ?? DEFAULT_COUNTER[it.id] ?? 0,
+      sell: it.sell ?? A.defaultSellValue(it.id, it.edition, jokerPrice)
+    };
+    const negative = it.edition === 'negative';
+    const limit = slots + (negative ? 1 : 0);
+    const out = [];
+    const tryAll = (rest, replace) => {
+      for (let p = 0; p <= rest.length; p++) {
+        const lineup = [...rest.slice(0, p), cand, ...rest.slice(p)];
+        out.push({ pos: p, count: lineup.length, replace, job: { jokers: encodeLineup(lineup, limit) } });
+      }
+    };
+    if (negative || cur.length < slots) tryAll(cur, null);
+    else cur.forEach((j, r) => tryAll(cur.filter((_, i) => i !== r), j));
+    return out;
+  }
+
+  function shopSignature() {
+    return JSON.stringify([state.jokers.map(jokerKey), state.levels, state.flags.plasma, state.flags.observatory, state.shop, state.fullDeck?.length, state.run?.counters]);
+  }
+
+  function scheduleShop() {
+    const rated = state.shop.items.some(it => it.kind !== 'other');
+    const sig = shopSignature();
+    if (rated && sig === shopRun.sig && (shopRun.result || shopRun.running)) return;
+    clearTimeout(shopRun.timer);
+    shopRun.reqId++;
+    killShopPool();
+    shopRun.sig = sig;
+    shopRun.result = null;
+    shopRun.running = rated;
+    renderShop();
+    if (rated) shopRun.timer = setTimeout(runShop, 300);
+  }
+
+  function runShop() {
+    const id = shopRun.reqId;
+    const prof = shopProfile();
+    const base = A.encodeState({ levels: state.levels, flags: { plasma: state.flags.plasma, observatory: state.flags.observatory } });
+    delete base.cards;
+    delete base.jokers;
+    const jobs = [{ jokers: encodeLineup(state.jokers, shopSlots()) }];
+    const plans = state.shop.items.filter(it => it.kind !== 'other').map(it => {
+      const variants = shopVariants(it);
+      const first = jobs.length;
+      for (const v of variants) jobs.push(v.job);
+      return { it, first, variants };
+    });
+    const t0 = performance.now();
+    const workers = getShopPool();
+    const chunk = Math.ceil(jobs.length / workers.length);
+    const parts = Math.ceil(jobs.length / chunk);
+    const values = new Array(jobs.length);
+    let done = 0;
+    for (let k = 0; k < parts; k++) {
+      const w = workers[k];
+      w.onmessage = ev => {
+        const m = ev.data;
+        if (m.reqId !== id) return;
+        if (m.error) { shopRun.running = false; shopRun.result = { error: m.error }; renderShop(); return; }
+        m.values.forEach((v, i) => { values[m.start + i] = v; });
+        if (++done < parts) return;
+        const results = plans.map(({ it, first, variants }) => {
+          let best = null;
+          variants.forEach((v, n) => { if (!best || values[first + n] > best.val + 1e-12) best = { ...v, val: values[first + n] }; });
+          return { it, gain: 10 ** (best.val - values[0]) - 1, pos: best.pos, count: best.count, replace: best.replace, tried: variants.length };
+        });
+        shopRun.running = false;
+        shopRun.result = { results, prof, ms: performance.now() - t0 };
+        renderShop();
+      };
+      w.postMessage({ type: 'shop', reqId: id, base, samples: prof.samples, weights: prof.weights, jobs: jobs.slice(k * chunk, (k + 1) * chunk), start: k * chunk });
+    }
+  }
+
+  const fmtGain = g => (Math.abs(g) < 0.0005 ? '±0%' : g >= 9 ? `×${fmtNum(Math.round((1 + g) * 10) / 10)}` : `${g > 0 ? '+' : ''}${fmtNum(Math.round(g * 1000) / 10)}%`);
+  const netCost = r => shopCost(r.it) - (r.replace ? r.replace.sell || 0 : 0);
+
+  function shopWhere(r) {
+    const it = r.it;
+    if (it.kind === 'planet') {
+      const L = state.levels[it.hand].level;
+      return `${A.HAND_NAMES[it.hand]} lvl ${L} → ${L + 1}${state.jokers.some(j => j.id === CONSTELLATION) ? ', and Constellation grows' : ''}`;
+    }
+    if (r.replace) return `Slots full: sell <b>${esc(byId[r.replace.id].name)}</b> (+$${r.replace.sell || 0}) and put it in slot ${r.pos + 1} of ${r.count}`;
+    return `Put it in slot ${r.pos + 1} of ${r.count}${it.edition === 'negative' ? ' (Negative: no slot used)' : ''}`;
+  }
+
+  function shopNote(r) {
+    const it = r.it;
+    if (it.kind === 'planet') {
+      return r.gain < 0.0005 && !shopRun.result.prof.types.some(([t]) => t === it.hand) ? `You rarely play ${A.HAND_NAMES[it.hand]}.` : '';
+    }
+    // Counter spec [kind, start, step per count, min]: a positive step grows (Ride the Bus), a negative one wears off (Ramen).
+    const c = byId[it.id].c;
+    const step = c && ['XMult', '+Mult', '+Chips'].includes(c[0]) && !SaveImport.RUN_COUNTERS.includes(it.id) ? c[2] : 0;
+    if (Math.abs(r.gain) < 0.0005) return `Adds no score on these plays${step > 0 ? ' yet' : ''}. Hover for what it does instead (money, cards, or utility).`;
+    if (step > 0) return 'Grows over the run; rated at its value today.';
+    if (step < 0) return 'Wears off as you play; rated at its value today.';
+    return '';
+  }
+
+  // In the shop there's no hand, so the shop list moves above the (empty) advice and plays.
+  function placeShop() {
+    $('#results-col').classList.toggle('shop-first', !state.hand.length && state.shop.items.length > 0);
+  }
+
+  function renderShop() {
+    const box = $('#shop-body');
+    if (!box) return;
+    placeShop();
+    const sh = state.shop;
+    for (const [id, v] of [['shop-money', sh.money ?? state.run?.dollars ?? ''], ['shop-slots', shopSlots()], ['shop-focus', sh.focus ?? '']]) {
+      const el = $('#' + id);
+      if (el && document.activeElement !== el) el.value = v;
+    }
+    const others = sh.items.filter(it => it.kind === 'other');
+    const othersHtml = others.length ? `<div class="shop-others muted">Not rated: ${others.map(it => `<span class="shop-other">${esc(it.name)}${it.what && !it.name.toLowerCase().includes(it.what.toLowerCase()) ? ` <span class="muted">${esc(it.what)}</span>` : ''} $${shopCost(it) ?? '?'} <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button></span>`).join(' ')}</div>` : '';
+    if (!sh.items.some(it => it.kind !== 'other')) {
+      box.innerHTML = `<div class="muted">${state.run?.inShop ? 'No jokers or planets in this shop.' : 'Load a save taken in the shop, or add what the shop offers with <b>+ Joker</b> and <b>+ Planet</b>.'} Each one is rated by how much it raises your score on the hands you play.</div>${othersHtml}`;
+      return;
+    }
+    const res = shopRun.result;
+    if (shopRun.running || !res) { box.innerHTML = `<div class="muted">Rating ${sh.items.filter(it => it.kind !== 'other').length} items…</div>${othersHtml}`; return; }
+    if (res.error) { box.innerHTML = `<div class="mult-c">Couldn't rate: ${esc(res.error)}</div>${othersHtml}`; return; }
+
+    const money = shopMoney();
+    const afford = r => money == null || netCost(r) <= money;
+    const sorted = res.results.slice().sort((a, b) => b.gain - a.gain);
+    const good = sorted.filter(r => r.gain >= 0.005);
+    const nameOf = r => `<b>${esc(shopName(r.it))}</b>`;
+    let headline;
+    if (!good.length) headline = `<b>Nothing here raises your score</b> on these hands. Keep the money (interest), or buy for money and utility: check the tiers.`;
+    else {
+      const top = good[0];
+      const can = good.find(afford);
+      if (afford(top)) headline = `<b>Best buy:</b> ${nameOf(top)}, <span class="money-c">${fmtGain(top.gain)}</span> score for $${netCost(top)}.`;
+      else if (can) headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}) but costs $${netCost(top)} and you have $${money}. <b>Best you can afford:</b> ${nameOf(can)}, <span class="money-c">${fmtGain(can.gain)}</span>.`;
+      else headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}), but you have $${money}: nothing here is affordable yet.`;
+    }
+    const mix = res.prof.types.map(([t, w]) => `<b>${A.HAND_NAMES[t]}</b>${res.prof.types.length > 1 ? ` ${pct(w)}` : ''}`).join(' · ');
+    const rows = sorted.map((r, n) => {
+      const it = r.it;
+      const cost = netCost(r);
+      const pic = it.kind === 'joker'
+        ? `${Sprites.joker({ id: it.id, edition: it.edition })}<span class="tier" data-t="${tierOf(it.id)}">${tierOf(it.id)}</span>`
+        : `<div class="planet-badge">${esc(A.PLANETS[it.hand])}</div>`;
+      const ed = it.kind === 'joker' && it.source !== 'save'
+        ? `<select data-act="shop-edition" data-sid="${it.sid}" title="Edition">${['', ...JOKER_EDITIONS].map(e => `<option value="${e}"${(it.edition || '') === e ? ' selected' : ''}>${e ? MOD_LABEL[e] : 'no edition'}</option>`).join('')}</select>`
+        : it.edition ? `<span class="muted">${MOD_LABEL[it.edition]}</span>` : '';
+      const note = shopNote(r);
+      return `<div class="shop-row${n === 0 && r.gain >= 0.005 ? ' top' : ''}" ${it.kind === 'joker' ? `data-id="${it.id}"` : ''}>
+        <div class="shop-pic">${pic}</div>
+        <div class="shop-main">
+          <div>${esc(shopName(it))} ${ed}${it.source === 'save' ? ' <span class="muted">from save</span>' : ''}</div>
+          <div class="muted">${shopWhere(r)}</div>
+          ${note ? `<div class="muted shop-note">${note}</div>` : ''}
+        </div>
+        <div class="shop-num"><div class="big${r.gain >= 0.005 ? ' money-c' : r.gain <= -0.005 ? ' mult-c' : ''}">${fmtGain(r.gain)}</div><div class="${money != null && cost > money ? 'mult-c' : 'muted'}" title="${money != null ? `You have $${money}` : ''}">$${cost}</div></div>
+        <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button>
+      </div>`;
+    }).join('');
+    box.innerHTML = `<div class="adv-head">${headline}</div>${rows}${othersHtml}
+      <div class="muted adv-note">Rated on ${SHOP_PER_TYPE} plays each of ${mix}${state.shop.focus == null ? ' (the hands you play most)' : ''}, dealt from ${esc(res.prof.deckFrom)}, with ${SHOP_HELD} cards held. Score change is the average over those plays with the item in its best slot; your other jokers keep their order, so run Optimize order after buying. Scaling and money jokers are rated on what they do today.</div>`;
+  }
+
+  function addShopItem(item) {
+    state.shop.items.push({ sid: uid(), source: 'manual', ...item });
+    save();
+    scheduleShop();
+    if (state.ui.collapsed.shop) { state.ui.collapsed.shop = false; applyCollapsed(); }
+  }
+
+  function onShopInput(e) {
+    const t = e.target;
+    const act = t.dataset.act;
+    if (act === 'shop-planet') {
+      if (t.value !== '') { addShopItem({ kind: 'planet', hand: +t.value, cost: null }); toast(`Added ${A.PLANETS[+t.value]} to the shop list`); }
+      t.value = '';
+      return;
+    }
+    if (act === 'shop-edition') {
+      const it = state.shop.items.find(x => x.sid === t.dataset.sid);
+      if (it) { it.edition = t.value || null; it.sell = null; }
+    } else if (t.id === 'shop-money') state.shop.money = t.value === '' ? null : Math.max(0, Math.round(+t.value));
+    else if (t.id === 'shop-slots') state.shop.slots = t.value === '' ? null : Math.max(1, Math.round(+t.value));
+    else if (t.id === 'shop-focus') state.shop.focus = t.value === '' ? null : +t.value;
+    else return;
+    save();
+    scheduleShop();
   }
 
   // ---------- formatting ----------
@@ -1179,10 +1525,19 @@ Mac: ~/Library/Application Support/Balatro/1
 
   // ---------- joker picker ----------
 
-  const picker = { query: '', tiers: new Set(), kb: 0, results: [] };
+  // forShop: picks go on the shop list (purchase advice) instead of into your jokers.
+  const picker = { query: '', tiers: new Set(), kb: 0, results: [], forShop: false };
 
-  function openPicker() {
+  function pickerAdd(id, at) {
+    if (!picker.forShop) return addJoker(id, at);
+    addShopItem({ kind: 'joker', id, edition: null, cost: null });
+    toast(`Added ${byId[id].name} to the shop list`);
+  }
+
+  function openPicker(forShop = false) {
     closePopover();
+    picker.forShop = forShop;
+    $('#picker-mode').hidden = !forShop;
     $('#picker').hidden = false;
     $('#scrim').hidden = false;
     const input = $('#picker-search');
@@ -1195,6 +1550,7 @@ Mac: ~/Library/Application Support/Balatro/1
   function closePicker() {
     if ($('#picker').contains(document.activeElement)) document.activeElement.blur();
     $('#picker').hidden = true;
+    picker.forShop = false;
     $('#scrim').hidden = $('#popover').hidden && $('#settings').hidden;
     hideInfo();
   }
@@ -1216,7 +1572,7 @@ Mac: ~/Library/Application Support/Balatro/1
   function pickerTapInfo(id, anchor) {
     openPopover(`<div class="pop-head">${Sprites.joker({ id })}<div><h2>${esc(byId[id].name)}</h2></div></div>
       <div class="info" style="position:static;width:auto;pointer-events:auto;box-shadow:none">${infoHtml(id).replace(/<div class="t">[\s\S]*?<\/div>/, '')}</div>
-      <div class="actions"><span class="spacer"></span><button data-act="close">Close</button><button class="primary" data-act="pick-add" data-id="${id}">Add joker</button></div>`, anchor);
+      <div class="actions"><span class="spacer"></span><button data-act="close">Close</button><button class="primary" data-act="pick-add" data-id="${id}">${picker.forShop ? 'Add to shop list' : 'Add joker'}</button></div>`, anchor);
     popFor = { kind: 'pick' };
   }
 
@@ -1289,7 +1645,7 @@ Mac: ~/Library/Application Support/Balatro/1
 
     const list = d.kind === 'card' ? state.hand : state.jokers;
     if (d.kind === 'pick') {
-      if (d.target) { addJoker(d.payload, d.idx); closePicker(); }
+      if (d.target) { pickerAdd(d.payload, d.idx); closePicker(); }
       else $('#scrim').hidden = false;
       return;
     }
@@ -1398,7 +1754,7 @@ Mac: ~/Library/Application Support/Balatro/1
       if (e.target.closest('#popover')) {
         if (popFor?.kind === 'joker') onJokerEditor(e, 'click');
         else if (popFor?.kind === 'card') onCardEditor(e);
-        else if (act === 'pick-add') { addJoker(+actEl.dataset.id); closePopover(); closePicker(); }
+        else if (act === 'pick-add') { pickerAdd(+actEl.dataset.id); closePopover(); closePicker(); }
         else if (act === 'load-save') { closePopover(); $('#save-file').click(); }
         else if (act === 'close') closePopover();
         return;
@@ -1407,6 +1763,8 @@ Mac: ~/Library/Application Support/Balatro/1
       if (act === 'save-help') { openPopover(saveHelpHtml(), actEl); popFor = { kind: 'help' }; return; }
       if (act === 'run-close') { state.run = null; save(); renderRun(); return; }
       if (act === 'open-picker') return openPicker();
+      if (act === 'shop-add') return openPicker(true);
+      if (act === 'shop-remove') { state.shop.items = state.shop.items.filter(it => it.sid !== actEl.dataset.sid); save(); scheduleShop(); return; }
       if (act === 'close-picker') return closePicker();
       if (act === 'open-settings') { renderSettings(); $('#settings').hidden = false; $('#scrim').hidden = false; return; }
       if (act === 'close-settings') { $('#settings').hidden = true; $('#scrim').hidden = $('#picker').hidden && $('#popover').hidden; return; }
@@ -1440,7 +1798,7 @@ Mac: ~/Library/Application Support/Balatro/1
         const pick = e.target.closest('.pick');
         if (pick) {
           const id = +pick.dataset.id;
-          if (canHover) { addJoker(id); closePicker(); } else pickerTapInfo(id, pick);
+          if (canHover) { pickerAdd(id); closePicker(); } else pickerTapInfo(id, pick);
         }
         return;
       }
@@ -1478,6 +1836,7 @@ Mac: ~/Library/Application Support/Balatro/1
       if (e.target.closest('#levels')) return onLevelInput(e);
       if (e.target.dataset.act === 'opt-hand') { opt.handType = +e.target.value; optimize(); }
       if (e.target.dataset.act === 'round') onRoundInput(e);
+      if (e.target.closest('#shop')) onShopInput(e);
     });
 
     document.addEventListener('keydown', e => {
@@ -1488,7 +1847,7 @@ Mac: ~/Library/Application Support/Balatro/1
         resetEntry(); renderEntry(); return;
       }
       if (e.target.id === 'picker-search') {
-        if (e.key === 'Enter' && picker.results.length) { addJoker(picker.results[picker.kb].id); closePicker(); e.preventDefault(); }
+        if (e.key === 'Enter' && picker.results.length) { pickerAdd(picker.results[picker.kb].id); closePicker(); e.preventDefault(); }
         if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { picker.kb = Math.min(picker.kb + 1, picker.results.length - 1); renderPicker(); e.preventDefault(); }
         if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { picker.kb = Math.max(0, picker.kb - 1); renderPicker(); e.preventDefault(); }
         return;
@@ -1508,6 +1867,8 @@ Mac: ~/Library/Application Support/Balatro/1
         if (pick) return showInfo(+pick.dataset.id, pick);
         const slot = e.target.closest('#joker-row .slot');
         if (slot) { const j = state.jokers.find(x => x.uid === slot.dataset.uid); if (j) return showInfo(j.id, slot, j.value || 0); }
+        const offer = e.target.closest('.shop-row[data-id] .shop-pic');
+        if (offer) return showInfo(+offer.parentElement.dataset.id, offer);
         if (!e.target.closest('.info')) hideInfo();
       });
     }
@@ -1561,6 +1922,8 @@ Mac: ~/Library/Application Support/Balatro/1
     renderEntry();
     renderPlays();
     renderRun();
+    $('#shop-planet').innerHTML = '<option value="">+ Planet…</option>' + A.PLANETS.map((p, i) => `<option value="${i}">${p} (${A.HAND_NAMES[i]})</option>`).join('');
+    $('#shop-focus').innerHTML = '<option value="">hands you play most</option>' + A.HAND_NAMES.map((h, i) => `<option value="${i}">${h}</option>`).join('');
     $('header [data-act=load-save]').title = `Load jokers, hand, levels, and deck from Balatro's save.jkr.\n\n${SAVE_WHERE_TEXT}`;
     $('header [data-act=save-help]').title = SAVE_WHERE_TEXT;
     applyCollapsed();
@@ -1573,4 +1936,7 @@ Mac: ~/Library/Application Support/Balatro/1
 /** CHANGELOG
  * v1.0 (2026-10-21): Main screen: joker row, hand, card entry (keys and buttons), best plays, inline hand levels, joker picker with
  *   appearance search and tiers, joker and card editors (editions, counters in display units, seals), drag and drop, settings, persistence.
+ * v1.1 (2026-10-21): Added since v1.0 (page builds 1.1 to 1.7): joker order optimizer, save import with drop box and Reload save,
+ *   quick and shorthand card entry, discard advice, minimizable sections, save-location tooltips, and the shop panel (purchase advice:
+ *   offers from the save or typed in, rated on plays dealt from your deck for the hands you play most).
  */

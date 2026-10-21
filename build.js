@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.6.1';
+const VERSION = '1.7';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
@@ -29,7 +29,8 @@ const CHANGELOG = [
   ['1.5', '2026-10-21', 'Discard advice: compares playing now with sensible discards by simulating the rest of the blind from your draw pile; shows chance to clear, next-hand odds, and outlines the cards to discard. Chips, hands, and discards come from the save. Verified on a real save.'],
   ['1.5.1', '2026-10-21', 'Advice names the cards to discard and to keep, and outlines the discards in red in your hand.'],
   ['1.6', '2026-10-21', 'Cards written out as text in advice and best plays. Sections can be minimized (remembered). Fixed advice running twice when chips needed was edited.'],
-  ['1.6.1', '2026-10-21', 'Hovering the save buttons or the drop box shows where save.jkr usually is, and the help says AppData (Windows) and Library (Mac) are hidden folders.']
+  ['1.6.1', '2026-10-21', 'Hovering the save buttons or the drop box shows where save.jkr usually is, and the help says AppData (Windows) and Library (Mac) are hidden folders.'],
+  ['1.7', '2026-10-21', 'Shop: what to buy. Rates shop jokers (every slot, or in place of each joker when slots are full) and planets by score gain on plays dealt from your deck for the hands you play most. Reads offers from a save taken in the shop, or add them with + Joker and + Planet. Shows cost against your money; vouchers and packs listed unrated.']
 ];
 
 const ROOT = __dirname;

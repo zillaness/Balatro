@@ -1,6 +1,6 @@
 /**
  * @file ui_smoke.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -165,7 +165,7 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');
-  const { saveBytes } = require('./save_fixture');
+  const { saveBytes, SHOP_SAVE } = require('./save_fixture');
   const tmp = path.join(os.tmpdir(), `save-${process.pid}.jkr`);
   require('fs').writeFileSync(tmp, saveBytes());
   await page.setInputFiles('#save-file', tmp);
@@ -237,11 +237,52 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.click('[data-act=collapse][data-panel=levels]');
   await page.click('[data-act=collapse][data-panel=entry]');
 
-  // Phone width: no sideways scroll.
+  // Shop: a save taken in the shop rates the offers against your jokers, deck, and most-played hands.
+  const shopTmp = path.join(os.tmpdir(), `shop-${process.pid}.jkr`);
+  require('fs').writeFileSync(shopTmp, saveBytes(SHOP_SAVE));
+  const shopRated = n => page.waitForFunction(k => document.querySelectorAll('#shop-body .shop-row').length === k && !/Rating/.test(document.querySelector('#shop-body').innerText), n, { timeout: 30000 });
+  const shopNames = () => page.$$eval('#shop-body .shop-row', els => els.map(e => e.querySelector('.shop-main div').firstChild.textContent.trim()));
+  await page.setInputFiles('#save-file', shopTmp);
+  await shopRated(4);
+  const names = await shopNames();
+  const shopText = await page.$eval('#shop-body', e => e.innerText);
+  check(names.indexOf('Gluttonous Joker') < names.indexOf('Greedy Joker') && names.indexOf('Jupiter') < names.indexOf('Pluto'), 'clubs flush run: Gluttonous over Greedy, Jupiter over Pluto', names.join(' | '));
+  check(/Best buy: Gluttonous Joker/.test(shopText) && /Flush 67% · Pair 33%/.test(shopText) && /You rarely play High Card/.test(shopText), 'headline, played-hand mix, and planet note', shopText.split('\n')[0]);
+  check(/Not rated: Arcana Pack \$4.*Overstock Voucher \$10/s.test(shopText), 'vouchers and packs listed with prices, not rated');
+  check((await page.$eval('#shop-money', e => e.value)) === '9', 'money from the save');
+  check(await page.$eval('#shop-panel', e => e.getBoundingClientRect().top < document.querySelector('#advice-panel').getBoundingClientRect().top), 'with no hand, the shop list sits above discard advice');
+
+  // Full slots: each joker offer says which joker to sell.
+  await page.fill('#shop-slots', '4');
+  await page.dispatchEvent('#shop-slots', 'change');
+  await page.waitForFunction(() => /Slots full: sell/.test(document.querySelector('#shop-body').innerText), null, { timeout: 30000 });
+  check(true, 'full slots: offers name the joker to sell');
+  await page.fill('#shop-slots', '5');
+  await page.dispatchEvent('#shop-slots', 'change');
+
+  // Typed-in offers: + Joker opens the picker for the shop list; your own jokers don't change.
+  const owned = (await jokerCells()).length;
+  await page.click('[data-act=shop-add]');
+  check(await page.isVisible('#picker-mode'), 'picker says it is adding to the shop list');
+  await page.keyboard.type('baron');
+  await page.keyboard.press('Enter');
+  await shopRated(5);
+  check((await jokerCells()).length === owned && (await shopNames()).includes('Baron'), 'Baron goes on the shop list, not into your jokers', (await shopNames()).join(' | '));
+  await page.click('[data-act=shop-remove] >> nth=0');
+  await shopRated(4);
+  check(true, 'remove takes an offer off the list');
+  require('fs').unlinkSync(shopTmp);
+
+  // Phone width: no sideways scroll, with the shop list showing.
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   phone.on('pageerror', e => errors.push('phone: ' + e.message));
   await phone.goto(FILE);
-  await phone.waitForTimeout(500);
+  const phoneTmp = path.join(os.tmpdir(), `shop-phone-${process.pid}.jkr`);
+  require('fs').writeFileSync(phoneTmp, saveBytes(SHOP_SAVE));
+  await phone.setInputFiles('#save-file', phoneTmp);
+  await phone.waitForSelector('#shop-body .shop-row', { timeout: 30000 });
+  await phone.waitForTimeout(800);
+  require('fs').unlinkSync(phoneTmp);
   const [sw, iw] = await phone.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
   check(sw <= iw, 'phone width has no horizontal scroll', `${sw} vs ${iw}`);
 
@@ -253,4 +294,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Search, keyboard entry, scores, drag reorder, counter editing, card editing, trash, picker drag, levels, persistence, phone width.
+ * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove).
  */

@@ -1,6 +1,6 @@
 /**
  * @file save_import.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -158,6 +158,17 @@ const SaveImport = (() => {
   const RANK = { Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A', T: '10' };
   // Game state ids (globals.lua): only these tell us whether the hand in the save is live.
   const STATE_NAMES = { 1: 'choosing a hand', 2: 'scoring a hand', 3: 'drawing', 5: 'in the shop', 7: 'choosing a blind', 8: 'cashing out' };
+  const SHOP = 5;
+  const IN_ROUND = new Set([1, 2, 3]);
+  // Planet key -> hand, for saves whose planet cards don't carry ability.consumeable.hand_type.
+  const PLANET_HAND = {
+    c_pluto: 'High Card', c_mercury: 'Pair', c_uranus: 'Two Pair', c_venus: 'Three of a Kind', c_saturn: 'Straight',
+    c_jupiter: 'Flush', c_earth: 'Full House', c_mars: 'Four of a Kind', c_neptune: 'Straight Flush',
+    c_planet_x: 'Five of a Kind', c_ceres: 'Flush House', c_eris: 'Flush Five'
+  };
+  // Jokers whose counter comes from the run (deck, money, discards), not from the joker itself; a joker bought
+  // later starts with the same value.
+  const RUN_COUNTERS = [9, 21, 27, 52, 57, 70, 75, 76, 89, 107, 127, 135, 137, 147, 157];
 
   function editionOf(e) {
     if (!e || typeof e !== 'object') return null;
@@ -226,6 +237,25 @@ const SaveImport = (() => {
         if (spec[0] === '+Mult') return shown(ab.mult);
         return undefined;
     }
+  }
+
+  // "v_overstock_norm" -> "Overstock norm" when the card carries no name.
+  const prettyKey = k => String(k || 'unknown').replace(/^[a-z]_/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+
+  // One shop offer: a joker (rated), a planet (rated), or anything else (listed with its price).
+  function shopItem(c, area, ctx) {
+    const key = c.save_fields?.center;
+    const ab = c.ability || {};
+    const cost = typeof c.cost === 'number' ? c.cost : null;
+    const id = JOKER_KEYS[key];
+    if (id !== undefined) {
+      const value = counterFor(id, ab, ctx);
+      return { kind: 'joker', id, edition: editionOf(c.edition), value: isFinite(value) ? value : null, cost, sell: typeof c.sell_cost === 'number' ? c.sell_cost : null };
+    }
+    const hand = A.HAND_NAMES.indexOf(ab.consumeable?.hand_type ?? PLANET_HAND[key]);
+    if (hand >= 0 && (ab.set === 'Planet' || PLANET_HAND[key])) return { kind: 'planet', hand, cost };
+    const what = area === 'shop_vouchers' ? 'Voucher' : area === 'shop_booster' ? 'Pack' : ab.set === 'Default' || ab.set === 'Enhanced' ? 'Playing card' : ab.set || 'Card';
+    return { kind: 'other', name: typeof ab.name === 'string' ? ab.name : prettyKey(key), what, cost };
   }
 
   function mapSave(root) {
@@ -303,7 +333,18 @@ const SaveImport = (() => {
     };
 
     const state = root.STATE;
-    if (state !== undefined && state !== 1 && !hand.length) warnings.push(`The game saved while ${STATE_NAMES[state] || 'between hands'}, so there is no hand to load`);
+    if (state !== undefined && state !== 1 && state !== SHOP && !hand.length) warnings.push(`The game saved while ${STATE_NAMES[state] || 'between hands'}, so there is no hand to load`);
+
+    // Shop offers, from a save taken in the shop (or in a pack opened there). A save from inside a round could
+    // still hold an old shop, so those are ignored. Run counters use next round's discards, not this round's.
+    const shopCtx = { ...ctx, discardsLeft: G.round_resets?.discards ?? ctx.discardsLeft, handsLeft: G.round_resets?.hands ?? ctx.handsLeft };
+    const shop = IN_ROUND.has(state) ? [] : ['shop_jokers', 'shop_booster', 'shop_vouchers'].flatMap(a => cardsOf(a).map(c => shopItem(c, a, shopCtx)));
+    const counters = {};
+    for (const id of RUN_COUNTERS) {
+      const v = counterFor(id, {}, shopCtx);
+      // Below zero means "not known" for the card-picking jokers (Idol, Mail-In Rebate, Ancient); Blue Joker can be negative.
+      if (typeof v === 'number' && isFinite(v) && (v >= 0 || id === 107)) counters[id] = v;
+    }
 
     return {
       jokers, hand, levels, flags, warnings,
@@ -319,9 +360,13 @@ const SaveImport = (() => {
         deckSize: fullDeck.length,
         handSize: areas.hand?.config?.card_limit ?? null,
         jokerSlots: areas.jokers?.config?.card_limit ?? null,
+        inShop: state === SHOP,
+        counters,
         version: root.VERSION || null
       },
-      drawPile
+      drawPile,
+      fullDeck,
+      shop
     };
   }
 
@@ -334,7 +379,7 @@ const SaveImport = (() => {
     return mapSave(root);
   }
 
-  return { read, inflate, parseLua, mapSave, JOKER_KEYS };
+  return { read, inflate, parseLua, mapSave, JOKER_KEYS, RUN_COUNTERS };
 })();
 
 if (typeof module !== 'undefined') module.exports = SaveImport;
@@ -343,4 +388,6 @@ if (typeof module !== 'undefined') module.exports = SaveImport;
  * v1.0 (2026-10-21): Decompress save.jkr, parse the Lua table literal, map jokers (editions, counters, sell values),
  *   hand, deck, hand levels, Observatory planets, boss and deck flags, and run info. Built without a real save to test
  *   against; field names follow the game's save code as best known.
+ * v1.1 (2026-10-21): Shop offers (jokers with costs and counters, planets by hand, vouchers and packs by name), the full deck, and
+ *   run-based counters for jokers bought later.
  */

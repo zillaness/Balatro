@@ -1,6 +1,6 @@
 /**
  * @file save_test.js
- * @version 1.0
+ * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -25,7 +25,7 @@ for (const f of ['vendor/cards.js', 'src/adapter.js', 'src/joker_meta.js', 'src/
 }
 const SaveImport = vm.runInContext('SaveImport', ctx);
 
-const { strPack, SAVE, joker } = require('./save_fixture');
+const { strPack, SAVE, SHOP_SAVE, joker } = require('./save_fixture');
 
 let failures = 0;
 const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok  ' : 'FAIL'}  ${what}${got !== undefined ? ` (${JSON.stringify(got)})` : ''}`); };
@@ -54,6 +54,16 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check(r.run.deckLeft === 3 && r.run.deckSize === 9, 'deck counts', [r.run.deckLeft, r.run.deckSize]);
   check(!r.warnings.length, 'no warnings', r.warnings);
 
+  check(!r.shop.length && !r.run.inShop, 'a save from inside a round has no shop offers', r.shop);
+
+  // A save taken in the shop: offers with prices, planets by hand, the rest by name.
+  const sh = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack(SHOP_SAVE))));
+  const offers = sh.shop.map(it => it.kind === 'joker' ? `joker ${it.id} $${it.cost}` : it.kind === 'planet' ? `planet ${it.hand} $${it.cost}` : `${it.what} ${it.name} $${it.cost}`);
+  check(offers.join(', ') === 'joker 19 $5, joker 16 $5, planet 6 $3, planet 11 $3, Pack Arcana Pack $4, Voucher Overstock $10', 'shop offers read from the save', offers);
+  check(sh.run.inShop && !sh.warnings.length, 'in the shop, with no "no hand" warning', sh.warnings);
+  check(sh.fullDeck.length === 25, 'full deck', sh.fullDeck.length);
+  check(sh.run.counters[52] === 1 && sh.run.counters[21] === 3, 'run counters for jokers bought later: Stencil 1 empty slot, Banner 3 discards', sh.run.counters);
+
   // Unknown jokers and non-run files are reported, not guessed.
   const odd = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack({ ...SAVE, cardAreas: { ...SAVE.cardAreas, jokers: { cards: [joker('j_modded_thing')] } } }))));
   check(odd.jokers.length === 0 && /doesn't know/.test(odd.warnings[0]), 'unknown joker skipped with a warning', odd.warnings);
@@ -72,4 +82,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Synthetic save in STR_PACK format: jokers, counters, editions, hand, levels, planets, flags, run info, error cases.
+ * v1.1 (2026-10-21): Shop offers, full deck, and run counters from a save taken in the shop.
  */
