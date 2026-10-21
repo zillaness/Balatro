@@ -199,8 +199,8 @@ main {
 .spr.deck { --img: var(--img-deck); --sw: 923; --sh: 380; }
 .spr.enh { --img: var(--img-enh); --sw: 497; --sh: 475; }
 .spr.ed { --img: var(--img-ed); --sw: 355; --sh: 94; }
-.spr.ed-foil { mix-blend-mode: screen; opacity: .95; }
-.spr.ed-holo { mix-blend-mode: hard-light; opacity: .75; }
+.spr.ed-foil { opacity: 1; }
+.spr.ed-holo { opacity: 1; }
 .spr.ed-poly { mix-blend-mode: color; opacity: .7; }
 .spr.ed-debuff { opacity: .85; }
 /* Edition overlays on jokers follow the joker's own outline (Wee Joker, Half Joker...). */

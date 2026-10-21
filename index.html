@@ -216,8 +216,8 @@ main {
 .spr.deck { --img: var(--img-deck); --sw: 923; --sh: 380; }
 .spr.enh { --img: var(--img-enh); --sw: 497; --sh: 475; }
 .spr.ed { --img: var(--img-ed); --sw: 355; --sh: 94; }
-.spr.ed-foil { mix-blend-mode: screen; opacity: .95; }
-.spr.ed-holo { mix-blend-mode: hard-light; opacity: .75; }
+.spr.ed-foil { opacity: 1; }
+.spr.ed-holo { opacity: 1; }
 .spr.ed-poly { mix-blend-mode: color; opacity: .7; }
 .spr.ed-debuff { opacity: .85; }
 /* Edition overlays on jokers follow the joker's own outline (Wee Joker, Half Joker...). */
@@ -5783,5 +5783,5 @@ const Sprites = (() => {
   v1.2 (2026-10-21): Load save: drag save.jkr onto the page or choose it to load jokers (editions, counters, sell values), hand, hand levels, deck, blind, and boss flags. Read-only.
   v1.3 (2026-10-21): Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.
   v1.3.1 (2026-10-21): Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.
-  v1.4 (2026-10-21): Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only).
+  v1.4 (2026-10-21): Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.
 -->
