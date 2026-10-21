@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.4.1';
+const VERSION = '1.4.2';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
@@ -23,7 +23,8 @@ const CHANGELOG = [
   ['1.3', '2026-10-21', 'Picture buttons for enhancements, editions, seals, and debuff in card entry and both editors. Moved to zillaness/balatro; built as index.html for GitHub Pages.'],
   ['1.3.1', '2026-10-21', 'Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.'],
   ['1.4', '2026-10-21', 'Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.'],
-  ['1.4.1', '2026-10-21', 'Favicon and home-screen icon (the classic Joker).']
+  ['1.4.1', '2026-10-21', 'Favicon and home-screen icon (the classic Joker).'],
+  ['1.4.2', '2026-10-21', 'Visible save drop box at the top of the page; help explains opening AppData with Win+R or the file dialog.']
 ];
 
 const ROOT = __dirname;

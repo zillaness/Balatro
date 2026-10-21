@@ -158,6 +158,9 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.waitForSelector('#order-result .opt-head', { timeout: 60000 });
   check(/not guaranteed/.test(await page.$eval('#order-result', e => e.innerText)), '8 jokers: approximate search labelled');
 
+  // A visible drop box for save.jkr before any save is loaded.
+  check(/Drop save\.jkr here/.test(await page.$eval('#run-strip', e => e.innerText)), 'save drop box shows on the page');
+
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');
   const { saveBytes } = require('./save_fixture');

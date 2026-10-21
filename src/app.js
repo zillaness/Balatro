@@ -380,13 +380,24 @@
     return `${Math.round(s / 3600)} h ago`;
   }
 
+  // The save box sits above the board: a drop target until a save is loaded, then the run summary
+  // (which still takes a newer save dropped on it).
   function renderRun() {
     const box = $('#run-strip');
     const r = state.run;
-    if (!r) { box.hidden = true; return; }
     box.hidden = false;
+    box.classList.toggle('empty', !r || !!r.error);
+    if (!r) {
+      box.innerHTML = `<span class="drop-icon" aria-hidden="true">⇩</span>
+        <span><b>Drop save.jkr here</b> to load your run <span class="muted">(jokers, hand, levels, deck, blind)</span></span>
+        <span class="spacer"></span>
+        <button class="blue" data-act="load-save">Choose save.jkr</button>
+        <button data-act="save-help">Where is it?</button>`;
+      return;
+    }
     if (r.error) {
-      box.innerHTML = `<span class="mult-c">Couldn't read ${esc(r.file)}: ${esc(r.error)}</span> <button data-act="save-help">Where is save.jkr?</button> <button data-act="run-close">Dismiss</button>`;
+      box.innerHTML = `<span class="mult-c">Couldn't read ${esc(r.file)}: ${esc(r.error)}</span>
+        <span class="spacer"></span><button class="blue" data-act="load-save">Choose save.jkr</button><button data-act="save-help">Where is it?</button><button data-act="run-close">Dismiss</button>`;
       return;
     }
     const bits = [
@@ -398,13 +409,14 @@
     ].filter(Boolean);
     box.innerHTML = `<span class="muted">${esc(r.file)} · loaded ${ago(r.loadedAt)}</span> ${bits.map(b => `<span>${b}</span>`).join('<span class="muted">·</span>')}
       ${r.warnings?.length ? `<span class="mult-c">${r.warnings.map(esc).join('; ')}</span>` : ''}
-      <span class="spacer"></span><button data-act="load-save">Load again</button><button data-act="run-close" title="Hide">✕</button>`;
+      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button data-act="load-save">Load again</button><button data-act="run-close" title="Forget this save">✕</button>`;
   }
 
   function saveHelpHtml() {
     return `<h2>Load your run from save.jkr</h2>
       <p>Balatro saves your current run as <b>save.jkr</b> in your profile folder. The calculator only reads it.</p>
-      <p><b>Windows:</b> in File Explorer, paste <code>%AppData%\\Balatro\\1</code> into the address bar and press Enter.
+      <p><b>Windows:</b> press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%AppData%\\Balatro\\1</code>, and press Enter. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.
+        Or click Choose save.jkr and paste <code>%AppData%\\Balatro\\1\\save.jkr</code> into the File name box.
         (<code>1</code> is your profile; use 2 or 3 if you play on another.)</p>
       <p><b>Mac:</b> in Finder choose Go, Go to Folder, and paste <code>~/Library/Application Support/Balatro/1</code>.</p>
       <p>Drag <b>save.jkr</b> onto this page, or choose it below. Pin the folder in Quick Access (Windows) or the Finder sidebar (Mac) so it's one click next time.
@@ -1313,14 +1325,15 @@
     // Files dropped anywhere on the page: a save.jkr loads the run.
     let dragDepth = 0;
     const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
-    document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; dragDepth++; $('#drop-overlay').hidden = false; });
-    document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $('#drop-overlay').hidden = true; } });
+    document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; dragDepth++; $('#drop-overlay').hidden = false; $('#run-strip').classList.add('over'); });
+    document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $('#drop-overlay').hidden = true; $('#run-strip').classList.remove('over'); } });
     document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
     document.addEventListener('drop', e => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragDepth = 0;
       $('#drop-overlay').hidden = true;
+      $('#run-strip').classList.remove('over');
       importSave(e.dataTransfer.files[0]);
     });
     $('#save-file').addEventListener('change', e => { importSave(e.target.files[0]); e.target.value = ''; });

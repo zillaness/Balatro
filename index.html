@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
-  file: index.html (Balatro Calculator v1.4.1)
-  version: 1.4.1
+  file: index.html (Balatro Calculator v1.4.2)
+  version: 1.4.2
   author: Sam Cao
   created: 2026-10-21
   last_updated: 2026-10-21
@@ -128,6 +128,19 @@ h2 { font-size: 22px; }
 }
 #run-strip .spacer { flex: 1; }
 #run-strip button { padding: 3px 10px; }
+#run-strip.empty {
+  max-width: calc(1500px - 32px);
+  margin-left: max(16px, env(safe-area-inset-left, 0px));
+  margin-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+}
+@media (min-width: 1532px) { #run-strip.empty { margin-left: auto; margin-right: auto; } }
+#run-strip.over { border: 2px dashed var(--money); background: rgba(245, 177, 67, .12); }
+#run-strip .drop-icon { font-size: 26px; color: var(--money); line-height: 1; }
+@media (hover: none) { #run-strip .drop-hint { display: none; } }
 #drop-overlay {
   position: fixed;
   inset: 0;
@@ -601,7 +614,7 @@ footer a { color: var(--muted); }
   </div>
   <input type="file" id="save-file" accept=".jkr" hidden>
 </header>
-<div id="run-strip" hidden></div>
+<div id="run-strip" aria-live="polite"></div>
 
 <main>
   <section id="jokers-panel" class="panel">
@@ -4806,13 +4819,24 @@ const Sprites = (() => {
     return `${Math.round(s / 3600)} h ago`;
   }
 
+  // The save box sits above the board: a drop target until a save is loaded, then the run summary
+  // (which still takes a newer save dropped on it).
   function renderRun() {
     const box = $('#run-strip');
     const r = state.run;
-    if (!r) { box.hidden = true; return; }
     box.hidden = false;
+    box.classList.toggle('empty', !r || !!r.error);
+    if (!r) {
+      box.innerHTML = `<span class="drop-icon" aria-hidden="true">⇩</span>
+        <span><b>Drop save.jkr here</b> to load your run <span class="muted">(jokers, hand, levels, deck, blind)</span></span>
+        <span class="spacer"></span>
+        <button class="blue" data-act="load-save">Choose save.jkr</button>
+        <button data-act="save-help">Where is it?</button>`;
+      return;
+    }
     if (r.error) {
-      box.innerHTML = `<span class="mult-c">Couldn't read ${esc(r.file)}: ${esc(r.error)}</span> <button data-act="save-help">Where is save.jkr?</button> <button data-act="run-close">Dismiss</button>`;
+      box.innerHTML = `<span class="mult-c">Couldn't read ${esc(r.file)}: ${esc(r.error)}</span>
+        <span class="spacer"></span><button class="blue" data-act="load-save">Choose save.jkr</button><button data-act="save-help">Where is it?</button><button data-act="run-close">Dismiss</button>`;
       return;
     }
     const bits = [
@@ -4824,13 +4848,14 @@ const Sprites = (() => {
     ].filter(Boolean);
     box.innerHTML = `<span class="muted">${esc(r.file)} · loaded ${ago(r.loadedAt)}</span> ${bits.map(b => `<span>${b}</span>`).join('<span class="muted">·</span>')}
       ${r.warnings?.length ? `<span class="mult-c">${r.warnings.map(esc).join('; ')}</span>` : ''}
-      <span class="spacer"></span><button data-act="load-save">Load again</button><button data-act="run-close" title="Hide">✕</button>`;
+      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button data-act="load-save">Load again</button><button data-act="run-close" title="Forget this save">✕</button>`;
   }
 
   function saveHelpHtml() {
     return `<h2>Load your run from save.jkr</h2>
       <p>Balatro saves your current run as <b>save.jkr</b> in your profile folder. The calculator only reads it.</p>
-      <p><b>Windows:</b> in File Explorer, paste <code>%AppData%\\Balatro\\1</code> into the address bar and press Enter.
+      <p><b>Windows:</b> press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%AppData%\\Balatro\\1</code>, and press Enter. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.
+        Or click Choose save.jkr and paste <code>%AppData%\\Balatro\\1\\save.jkr</code> into the File name box.
         (<code>1</code> is your profile; use 2 or 3 if you play on another.)</p>
       <p><b>Mac:</b> in Finder choose Go, Go to Folder, and paste <code>~/Library/Application Support/Balatro/1</code>.</p>
       <p>Drag <b>save.jkr</b> onto this page, or choose it below. Pin the folder in Quick Access (Windows) or the Finder sidebar (Mac) so it's one click next time.
@@ -5739,14 +5764,15 @@ const Sprites = (() => {
     // Files dropped anywhere on the page: a save.jkr loads the run.
     let dragDepth = 0;
     const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
-    document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; dragDepth++; $('#drop-overlay').hidden = false; });
-    document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $('#drop-overlay').hidden = true; } });
+    document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; dragDepth++; $('#drop-overlay').hidden = false; $('#run-strip').classList.add('over'); });
+    document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $('#drop-overlay').hidden = true; $('#run-strip').classList.remove('over'); } });
     document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
     document.addEventListener('drop', e => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragDepth = 0;
       $('#drop-overlay').hidden = true;
+      $('#run-strip').classList.remove('over');
       importSave(e.dataTransfer.files[0]);
     });
     $('#save-file').addEventListener('change', e => { importSave(e.target.files[0]); e.target.value = ''; });
@@ -5787,4 +5813,5 @@ const Sprites = (() => {
   v1.3.1 (2026-10-21): Times played is editable on every hand-level row, not only with Supernova, Obelisk, or Card Sharp.
   v1.4 (2026-10-21): Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.
   v1.4.1 (2026-10-21): Favicon and home-screen icon (the classic Joker).
+  v1.4.2 (2026-10-21): Visible save drop box at the top of the page; help explains opening AppData with Win+R or the file dialog.
 -->

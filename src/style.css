@@ -109,6 +109,19 @@ h2 { font-size: 22px; }
 }
 #run-strip .spacer { flex: 1; }
 #run-strip button { padding: 3px 10px; }
+#run-strip.empty {
+  max-width: calc(1500px - 32px);
+  margin-left: max(16px, env(safe-area-inset-left, 0px));
+  margin-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+}
+@media (min-width: 1532px) { #run-strip.empty { margin-left: auto; margin-right: auto; } }
+#run-strip.over { border: 2px dashed var(--money); background: rgba(245, 177, 67, .12); }
+#run-strip .drop-icon { font-size: 26px; color: var(--money); line-height: 1; }
+@media (hover: none) { #run-strip .drop-hint { display: none; } }
 #drop-overlay {
   position: fixed;
   inset: 0;
