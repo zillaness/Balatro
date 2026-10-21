@@ -1,6 +1,6 @@
 /**
  * @file save_import.js
- * @version 1.2
+ * @version 1.2.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -166,6 +166,8 @@ const SaveImport = (() => {
     c_jupiter: 'Flush', c_earth: 'Full House', c_mars: 'Four of a Kind', c_neptune: 'Straight Flush',
     c_planet_x: 'Five of a Kind', c_ceres: 'Flush House', c_eris: 'Flush Five'
   };
+  // Skip tags that change the next shop's cards. The game marks the cards they touch "couponed" (price $0).
+  const SHOP_TAGS = { tag_coupon: 'Coupon Tag', tag_foil: 'Foil Tag', tag_holo: 'Holographic Tag', tag_polychrome: 'Polychrome Tag', tag_negative: 'Negative Tag', tag_uncommon: 'Uncommon Tag', tag_rare: 'Rare Tag' };
   // Jokers whose counter comes from the run (deck, money, discards), not from the joker itself; a joker bought
   // later starts with the same value.
   const RUN_COUNTERS = [9, 21, 27, 52, 57, 70, 75, 76, 89, 107, 127, 135, 137, 147, 157];
@@ -256,12 +258,12 @@ const SaveImport = (() => {
     const id = JOKER_KEYS[key];
     if (id !== undefined) {
       const value = counterFor(id, ab, ctx);
-      return { kind: 'joker', id, edition: editionOf(c.edition), value: isFinite(value) ? value : null, cost, sell: typeof c.sell_cost === 'number' ? c.sell_cost : null, stickers: stickersOf(ab) };
+      return { kind: 'joker', id, edition: editionOf(c.edition), value: isFinite(value) ? value : null, cost, sell: typeof c.sell_cost === 'number' ? c.sell_cost : null, stickers: stickersOf(ab), free: !!ab.couponed };
     }
     const hand = A.HAND_NAMES.indexOf(ab.consumeable?.hand_type ?? PLANET_HAND[key]);
-    if (hand >= 0 && (ab.set === 'Planet' || PLANET_HAND[key])) return { kind: 'planet', hand, cost };
+    if (hand >= 0 && (ab.set === 'Planet' || PLANET_HAND[key])) return { kind: 'planet', hand, cost, free: !!ab.couponed };
     const what = area === 'shop_vouchers' ? 'Voucher' : area === 'shop_booster' ? 'Pack' : ab.set === 'Default' || ab.set === 'Enhanced' ? 'Playing card' : ab.set || 'Card';
-    return { kind: 'other', name: typeof ab.name === 'string' ? ab.name : prettyKey(key), what, cost };
+    return { kind: 'other', name: typeof ab.name === 'string' ? ab.name : prettyKey(key), what, cost, free: !!ab.couponed };
   }
 
   function mapSave(root) {
@@ -345,6 +347,11 @@ const SaveImport = (() => {
     // still hold an old shop, so those are ignored. Run counters use next round's discards, not this round's.
     const shopCtx = { ...ctx, discardsLeft: G.round_resets?.discards ?? ctx.discardsLeft, handsLeft: G.round_resets?.hands ?? ctx.handsLeft };
     const shop = IN_ROUND.has(state) ? [] : ['shop_jokers', 'shop_booster', 'shop_vouchers'].flatMap(a => cardsOf(a).map(c => shopItem(c, a, shopCtx)));
+    // A shop tag still in the save's tag list hasn't touched the shop yet, so a price or edition here may be stale.
+    const pendingTags = list(root.tags).map(t => SHOP_TAGS[t?.key]).filter(Boolean);
+    if (state === SHOP && pendingTags.length) {
+      warnings.push(`${pendingTags.join(' and ')} still pending: the game wrote this save before ${pendingTags.length > 1 ? 'they' : 'it'} applied, so a shop card's price or edition may be wrong here`);
+    }
     const counters = {};
     for (const id of RUN_COUNTERS) {
       const v = counterFor(id, {}, shopCtx);
@@ -357,7 +364,7 @@ const SaveImport = (() => {
       run: {
         blind: blind.name || null,
         ante: G.round_resets?.ante ?? null,
-        chipsNeeded: typeof blind.chips === 'number' ? blind.chips : null,
+        chipsNeeded: state !== SHOP && typeof blind.chips === 'number' ? blind.chips : null,
         chipsScored: typeof G.chips === 'number' ? G.chips : null,
         handsLeft: round.hands_left ?? null,
         discardsLeft: round.discards_left ?? null,
@@ -367,6 +374,7 @@ const SaveImport = (() => {
         handSize: areas.hand?.config?.card_limit ?? null,
         jokerSlots: areas.jokers?.config?.card_limit ?? null,
         inShop: state === SHOP,
+        pendingTags,
         counters,
         // Money rules for purchase advice. Credit Card lowers bankrupt_at by 20; the rest are base game defaults.
         debtLimit: Math.max(0, -(+G.bankrupt_at || 0)),
@@ -406,4 +414,5 @@ if (typeof module !== 'undefined') module.exports = SaveImport;
  *   run-based counters for jokers bought later.
  * v1.2 (2026-10-21): Joker stickers (Eternal, Rental, Perishable), debt limit (Credit Card), interest cap, discount, discards per
  *   round, and unique planets used, for purchase advice.
+ * v1.2.1 (2026-10-21): Free (couponed) shop cards, pending shop tags warned about, no chips needed while in the shop.
  */

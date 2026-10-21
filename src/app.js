@@ -1,6 +1,6 @@
 /**
  * @file app.js
- * @version 1.2
+ * @version 1.2.1
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -449,10 +449,11 @@ Mac: ~/Library/Application Support/Balatro/1
       return;
     }
     const bits = [
-      r.blind && `<b>${esc(r.blind)}</b>${r.ante ? ` · Ante ${r.ante}` : ''}`,
+      // In the shop the save's blind and hands left are stale, so the strip just says Shop.
+      r.inShop ? `<b>Shop</b>${r.ante ? ` · Ante ${r.ante}` : ''}` : r.blind && `<b>${esc(r.blind)}</b>${r.ante ? ` · Ante ${r.ante}` : ''}`,
       r.chipsNeeded != null && `<span class="chips-c">${fmtNum(r.chipsScored || 0)}</span> of ${fmtNum(r.chipsNeeded)} chips`,
-      r.handsLeft != null && `${r.handsLeft} hands, ${r.discardsLeft} discards left`,
-      r.dollars != null && `<span class="money-c">$${r.dollars}</span>`,
+      !r.inShop && r.handsLeft != null && `${r.handsLeft} hands, ${r.discardsLeft} discards left`,
+      r.dollars != null && `<span class="${r.dollars < 0 ? 'mult-c' : 'money-c'}">${fmtMoney(r.dollars)}</span>`,
       `deck ${r.deckLeft} of ${r.deckSize}`
     ].filter(Boolean);
     box.innerHTML = `<span class="muted">${esc(r.file)} · loaded ${ago(r.loadedAt)}</span> ${bits.map(b => `<span>${b}</span>`).join('<span class="muted">·</span>')}
@@ -552,6 +553,7 @@ Mac: ~/Library/Application Support/Balatro/1
   }
 
   const pct = x => `${Math.round(x * 100)}%`;
+  const fmtMoney = m => (m < 0 ? `-$${-m}` : `$${m}`);
   const shortCard = c => `${A.normalizeRank(c.rank)}${c.suit ? SUIT_SYMBOL[c.suit] : '?'}`;
   // Cards written out (pictures are hard to read at small sizes): "K♠ Q♥", red for hearts and diamonds.
   const cardChips = cards => cards.map(c => `<span class="ct ct-${c.suit || 'x'}">${esc(shortCard(c))}${c.enhancement ? `<small>${esc(c.enhancement)}</small>` : ''}</span>`).join('');
@@ -830,9 +832,12 @@ Mac: ~/Library/Application Support/Balatro/1
         out.push({ pos: p, count: lineup.length, replace, moneyAfter: after(replace), job: { jokers: encodeLineup(withMoney(lineup, after(replace)), limit) } });
       }
     };
-    // Eternal jokers can't be sold, so they're never offered as the one to replace.
+    // Never offered as the one to replace: Eternal jokers (can't be sold); Negative ones (selling takes their extra slot
+    // with them, so it frees no room); Credit Card while you're in debt (selling it leaves you below $0 with no debt
+    // room, unable to buy anything that costs money).
+    const keep = j => j.stickers?.eternal || j.edition === 'negative' || (j.id === CREDIT_CARD && money != null && money < 0);
     if (negative || cur.length < slots) tryAll(cur, null);
-    else cur.forEach((j, r) => { if (!j.stickers?.eternal) tryAll(cur.filter((_, i) => i !== r), j); });
+    else cur.forEach((j, r) => { if (!keep(j)) tryAll(cur.filter((_, i) => i !== r), j); });
     return out;
   }
 
@@ -900,11 +905,12 @@ Mac: ~/Library/Application Support/Balatro/1
 
   const fmtGain = g => (Math.abs(g) < 0.0005 ? '±0%' : g >= 9 ? `×${fmtNum(Math.round((1 + g) * 10) / 10)}` : `${g > 0 ? '+' : ''}${fmtNum(Math.round(g * 1000) / 10)}%`);
   const netCost = r => shopCost(r.it) - (r.replace ? r.replace.sell || 0 : 0);
-  // Affordable with cash, or with Credit Card debt (unless the joker you'd sell is the Credit Card).
-  const canAfford = (r, money) => money == null || netCost(r) <= money + debtRoom(r.replace);
+  // The game lets you take any $0 card, even in debt; anything else must fit in your cash plus Credit Card debt
+  // (none if the joker you'd sell is the Credit Card).
+  const canAfford = (r, money) => money == null || shopCost(r.it) <= 0 || netCost(r) <= money + debtRoom(r.replace);
   const noScore = r => r.gain == null || Math.abs(r.gain) < 0.0005;
   // Selling the replaced joker can bring back more than the offer costs.
-  const priceText = c => (c < 0 ? `with $${-c} back` : `for $${c}`);
+  const priceText = c => (c < 0 ? `with $${-c} back` : c === 0 ? 'for free' : `for $${c}`);
 
   function shopWhere(r) {
     const it = r.it;
@@ -912,7 +918,7 @@ Mac: ~/Library/Application Support/Balatro/1
       const L = state.levels[it.hand].level;
       return `${A.HAND_NAMES[it.hand]} lvl ${L} → ${L + 1}${state.jokers.some(j => j.id === CONSTELLATION) ? ', and Constellation grows' : ''}`;
     }
-    if (r.noRoom) return 'Slots full, and your jokers are all Eternal (they can\'t be sold)';
+    if (r.noRoom) return 'Slots full, and selling none of your jokers makes room (Eternal, Negative, or Credit Card while you\'re in debt)';
     if (r.replace) return `Slots full: sell <b>${esc(byId[r.replace.id].name)}</b> (+$${r.replace.sell || 0}${r.replace.stickers?.rental ? ', and no more $3 rent' : ''}) and put it in slot ${r.pos + 1} of ${r.count}`;
     return `Put it in slot ${r.pos + 1} of ${r.count}${it.edition === 'negative' ? ' (Negative: no slot used)' : ''}`;
   }
@@ -925,7 +931,8 @@ Mac: ~/Library/Application Support/Balatro/1
     if (st.perishable != null) notes.push(`Perishable: stops working after ${st.perishable} rounds.`);
     if (st.eternal) notes.push("Eternal: you can't sell it later.");
     if (money != null && r.moneyAfter != null) {
-      if (r.moneyAfter < 0) notes.push(`Puts you $${-r.moneyAfter} into debt (Credit Card)${r.moneyAfter < -debtRoom(r.replace) ? ', more than it allows' : ''}.`);
+      if (shopCost(it) > 0 && r.moneyAfter < 0) notes.push(`Leaves you at ${fmtMoney(r.moneyAfter)} (Credit Card debt)${r.moneyAfter < -debtRoom(r.replace) ? ', past its limit' : ''}.`);
+      if (r.replace?.id === CREDIT_CARD) notes.push('Selling Credit Card gives up its $20 of debt room.');
       const lost = interestOn(money) - interestOn(r.moneyAfter);
       if (lost > 0 && it.id !== TO_THE_MOON) notes.push(`Costs $${lost} of interest next round.`);
       if (state.jokers.some(j => j.id === BULL || j.id === BOOTSTRAPS) && shopCost(it) > 0) notes.push('Spending lowers Bull and Bootstraps; included.');
@@ -963,7 +970,7 @@ Mac: ~/Library/Application Support/Balatro/1
       if (el && document.activeElement !== el) el.value = v;
     }
     const others = sh.items.filter(it => it.kind === 'other');
-    const othersHtml = others.length ? `<div class="shop-others muted">Not rated: ${others.map(it => `<span class="shop-other">${esc(it.name)}${it.what && !it.name.toLowerCase().includes(it.what.toLowerCase()) ? ` <span class="muted">${esc(it.what)}</span>` : ''} $${shopCost(it) ?? '?'} <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button></span>`).join(' ')}</div>` : '';
+    const othersHtml = others.length ? `<div class="shop-others muted">Not rated: ${others.map(it => `<span class="shop-other">${esc(it.name)}${it.what && !it.name.toLowerCase().includes(it.what.toLowerCase()) ? ` <span class="muted">${esc(it.what)}</span>` : ''} ${shopCost(it) === 0 ? 'Free' : `$${shopCost(it) ?? '?'}`} <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button></span>`).join(' ')}</div>` : '';
     if (!sh.items.some(it => it.kind !== 'other')) {
       box.innerHTML = `<div class="muted">${state.run?.inShop ? 'No jokers or planets in this shop.' : 'Load a save taken in the shop, or add what the shop offers with <b>+ Joker</b> and <b>+ Planet</b>.'} Each one is rated by how much it raises your score on the hands you play.</div>${othersHtml}`;
       return;
@@ -979,13 +986,13 @@ Mac: ~/Library/Application Support/Balatro/1
     const sorted = res.results.slice().sort((a, b) => ((b.gain ?? -1) - (a.gain ?? -1)) || (income(b) - income(a)));
     const good = sorted.filter(r => r.gain >= 0.005);
     const nameOf = r => `<b>${esc(shopName(r.it))}</b>`;
-    const have = `$${money}${debt ? ` (+$${debt} Credit Card debt)` : ''}`;
+    const have = `${fmtMoney(money)}${debt ? ` (Credit Card lets you go to -$${debt})` : ''}`;
     let headline;
-    if (!good.length) headline = `<b>Nothing here raises your score</b> on these hands. Keep the money (interest), or buy for money and utility: check the tiers.`;
+    if (!good.length) headline = `<b>Nothing here raises your score</b> on these hands. ${money != null && money < 0 ? 'Buy only for money or utility (check the tiers); in debt you earn no interest.' : 'Keep the money (interest), or buy for money and utility: check the tiers.'}`;
     else {
       const top = good[0];
       const can = good.find(afford);
-      if (afford(top)) headline = `<b>Best buy:</b> ${nameOf(top)}, <span class="money-c">${fmtGain(top.gain)}</span> score ${priceText(netCost(top))}${money != null && netCost(top) > money ? ', using Credit Card debt' : ''}.`;
+      if (afford(top)) headline = `<b>Best buy:</b> ${nameOf(top)}, <span class="money-c">${fmtGain(top.gain)}</span> score ${priceText(netCost(top))}${money != null && netCost(top) > 0 && netCost(top) > money ? ', using Credit Card debt' : ''}.`;
       else if (can) headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}) but costs $${netCost(top)} and you have ${have}. <b>Best you can afford:</b> ${nameOf(can)}, <span class="money-c">${fmtGain(can.gain)}</span>.`;
       else headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}), but you have ${have}: nothing here is affordable yet.`;
     }
@@ -1012,16 +1019,16 @@ Mac: ~/Library/Application Support/Balatro/1
       return `<div class="shop-row${n === 0 && r.gain >= 0.005 ? ' top' : ''}" ${it.kind === 'joker' ? `data-id="${it.id}"` : ''}>
         <div class="shop-pic">${pic}</div>
         <div class="shop-main">
-          <div>${esc(shopName(it))} ${ed}${it.stickers ? ['eternal', 'rental', 'perishable'].filter(k => it.stickers[k] != null && it.stickers[k] !== false).map(k => ` <span class="sticker">${k[0].toUpperCase() + k.slice(1)}</span>`).join('') : ''}${it.source === 'save' ? ' <span class="muted">from save</span>' : ''}</div>
+          <div>${esc(shopName(it))} ${ed}${it.stickers ? ['eternal', 'rental', 'perishable'].filter(k => it.stickers[k] != null && it.stickers[k] !== false).map(k => ` <span class="sticker">${k[0].toUpperCase() + k.slice(1)}</span>`).join('') : ''}${it.free ? ' <span class="sticker free">Free (skip tag)</span>' : ''}${it.source === 'save' ? ' <span class="muted">from save</span>' : ''}</div>
           <div class="muted">${shopWhere(r)}</div>
           ${note ? `<div class="muted shop-note">${note}</div>` : ''}
         </div>
-        <div class="shop-num">${big}<div class="${!canAfford(r, money) ? 'mult-c' : 'muted'}" title="${money != null ? `You have ${have}` : ''}">${cost < 0 ? `+$${-cost} back` : `$${cost}`}</div></div>
+        <div class="shop-num">${big}<div class="${!canAfford(r, money) ? 'mult-c' : 'muted'}" title="${money != null ? `You have ${have}` : ''}">${cost < 0 ? `+$${-cost} back` : cost === 0 ? 'Free' : `$${cost}`}</div></div>
         <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button>
       </div>`;
     }).join('');
     box.innerHTML = `<div class="adv-head">${headline}</div>${rows}${othersHtml}
-      <div class="muted adv-note">Rated on ${SHOP_PER_TYPE} plays each of ${mix}${state.shop.focus == null ? ' (the hands you play most)' : ''}, dealt from ${esc(res.prof.deckFrom)}, with ${SHOP_HELD} cards held. Score change is the average over those plays with the item in its best slot; your other jokers keep their order, so run Optimize order after buying. Chance effects (Lucky cards, Bloodstone, Misprint) count at their average. Prices count Credit Card debt; what you spend comes off Bull, Bootstraps, and interest. Eternal jokers are never suggested for selling. Scaling jokers are rated at today's value.</div>`;
+      <div class="muted adv-note">Rated on ${SHOP_PER_TYPE} plays each of ${mix}${state.shop.focus == null ? ' (the hands you play most)' : ''}, dealt from ${esc(res.prof.deckFrom)}, with ${SHOP_HELD} cards held. Score change is the average over those plays with the item in its best slot; your other jokers keep their order, so run Optimize order after buying. Chance effects (Lucky cards, Bloodstone, Misprint) count at their average. Prices count Credit Card debt; what you spend comes off Bull, Bootstraps, and interest. Eternal and Negative jokers, and Credit Card while you're in debt, are never suggested for selling. Scaling jokers are rated at today's value.</div>`;
   }
 
   function addShopItem(item) {
@@ -2040,4 +2047,6 @@ Mac: ~/Library/Application Support/Balatro/1
  *   offers from the save or typed in, rated on plays dealt from your deck for the hands you play most).
  * v1.2 (2026-10-21): Shop advice: Credit Card debt, interest, Bull and Bootstraps, stickers, voucher discount, Astronomer, money
  *   jokers per round. Entry toggle hides only the buttons; typing box keeps a how-to tooltip.
+ * v1.2.1 (2026-10-21): Fixes from a real shop save: free cards are affordable in debt and add no debt notes; Credit Card (while in
+ *   debt) and Negative jokers are never the one to sell; Free (skip tag) label; Shop and -$3 in the run strip.
  */

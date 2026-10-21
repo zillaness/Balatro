@@ -1,6 +1,6 @@
 /**
  * @file save_test.js
- * @version 1.2
+ * @version 1.3
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -25,7 +25,7 @@ for (const f of ['vendor/cards.js', 'src/adapter.js', 'src/joker_meta.js', 'src/
 }
 const SaveImport = vm.runInContext('SaveImport', ctx);
 
-const { strPack, SAVE, SHOP_SAVE, joker } = require('./save_fixture');
+const { strPack, SAVE, SHOP_SAVE, FREE_SAVE, PENDING_SAVE, joker } = require('./save_fixture');
 
 let failures = 0;
 const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok  ' : 'FAIL'}  ${what}${got !== undefined ? ` (${JSON.stringify(got)})` : ''}`); };
@@ -67,6 +67,12 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check(sh.fullDeck.length === 25, 'full deck', sh.fullDeck.length);
   check(sh.run.counters[52] === 1 && sh.run.counters[21] === 3 && sh.run.counters[27] === 1, 'run counters for jokers bought later: Stencil 1 empty slot, Banner 3 discards, 1 Steel card', sh.run.counters);
 
+  // Skip tags: cards a tag made free are read as free; a tag still pending is warned about.
+  const fr = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack(FREE_SAVE))));
+  check(fr.shop.filter(it => it.what !== 'Voucher').every(it => it.free && it.cost === 0) && fr.run.dollars === -3 && fr.run.chipsNeeded === null, 'Coupon Tag applied: starting shop cards read as free; no chips needed in the shop', fr.shop.map(it => it.free));
+  const pend = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack(PENDING_SAVE))));
+  check(/Negative Tag still pending/.test(pend.warnings.join()) && pend.run.pendingTags.join() === 'Negative Tag', 'a pending Negative Tag is warned about', pend.warnings);
+
   // Unknown jokers and non-run files are reported, not guessed.
   const odd = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack({ ...SAVE, cardAreas: { ...SAVE.cardAreas, jokers: { cards: [joker('j_modded_thing')] } } }))));
   check(odd.jokers.length === 0 && /doesn't know/.test(odd.warnings[0]), 'unknown joker skipped with a warning', odd.warnings);
@@ -87,4 +93,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
  * v1.0 (2026-10-21): Synthetic save in STR_PACK format: jokers, counters, editions, hand, levels, planets, flags, run info, error cases.
  * v1.1 (2026-10-21): Shop offers, full deck, and run counters from a save taken in the shop.
  * v1.2 (2026-10-21): Shop editions, stickers, and money rules.
+ * v1.3 (2026-10-21): Free (couponed) shop cards and pending skip tags.
  */

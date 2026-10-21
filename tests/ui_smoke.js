@@ -165,7 +165,7 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');
-  const { saveBytes, SHOP_SAVE } = require('./save_fixture');
+  const { saveBytes, SHOP_SAVE, FREE_SAVE } = require('./save_fixture');
   const tmp = path.join(os.tmpdir(), `save-${process.pid}.jkr`);
   require('fs').writeFileSync(tmp, saveBytes());
   await page.setInputFiles('#save-file', tmp);
@@ -256,7 +256,7 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check((await page.$eval('#shop-money', e => e.value)) === '9', 'money from the save');
   // Credit Card: the $10 Polychrome Gluttonous is affordable with $9 cash, using its debt; spending costs interest.
   const glut = await page.$eval('#shop-body .shop-row', e => [e.innerText, e.querySelector('.shop-num div:last-child').className]);
-  check(/Best buy: Gluttonous Joker.*using Credit Card debt/.test(shopText) && /\$1 into debt/.test(glut[0]) && /interest/.test(glut[0]) && !/mult-c/.test(glut[1]), 'Credit Card debt makes the $10 offer affordable, with debt and interest noted', glut[0].replace(/\s+/g, ' '));
+  check(/Best buy: Gluttonous Joker.*using Credit Card debt/.test(shopText) && /Leaves you at -\$1/.test(glut[0]) && /interest/.test(glut[0]) && !/mult-c/.test(glut[1]), 'Credit Card debt makes the $10 offer affordable, with debt and interest noted', glut[0].replace(/\s+/g, ' '));
   check(/Rental/.test(shopText) && /\$3 at the end of every round/.test(shopText), 'Rental sticker shown with its cost');
   check(/\+\$4\/round/.test(shopText) && /Best money buy: Golden Joker/.test(shopText), 'Golden Joker rated by money per round');
   check(await page.$eval('#shop-panel', e => e.getBoundingClientRect().top < document.querySelector('#advice-panel').getBoundingClientRect().top), 'with no hand, the shop list sits above discard advice');
@@ -282,6 +282,17 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.click('[data-act=shop-remove] >> nth=0');
   await shopRated(5);
   check(true, 'remove takes an offer off the list');
+  // In debt with a Coupon Tag applied (like a real save): free cards are affordable, add no debt, and Credit Card
+  // is never the joker to sell while you're below $0.
+  require('fs').writeFileSync(shopTmp, saveBytes(FREE_SAVE));
+  await page.setInputFiles('#save-file', shopTmp);
+  await page.waitForFunction(() => /Free \(skip tag\)/.test(document.querySelector('#shop-body').innerText) && !/Rating/.test(document.querySelector('#shop-body').innerText), null, { timeout: 30000 });
+  const freeText = await page.$eval('#shop-body', e => e.innerText);
+  check(/Best buy: .* (for free|with \$\d+ back)/.test(freeText) && !/affordable/.test(freeText), 'free cards are affordable in debt', freeText.split('\n')[0]);
+  check(!/into debt|Leaves you at/.test(freeText) && !/sell Credit Card/.test(freeText) && /Slots full: sell/.test(freeText), 'no debt notes for free cards; Credit Card kept while in debt');
+  check(!/sell Joker /.test(freeText), 'a Negative joker is never the one to sell (it frees no slot)');
+  check(/Free \(skip tag\)/.test(freeText) && /\nFree\n/.test(freeText), 'free cards labelled');
+  check(/-\$3/.test(await page.$eval('#run-strip', e => e.innerText)) && /Shop · Ante 2/.test(await page.$eval('#run-strip', e => e.innerText)), 'run strip shows Shop and -$3', await page.$eval('#run-strip', e => e.innerText.replace(/\s+/g, ' ')));
   require('fs').unlinkSync(shopTmp);
 
   // Phone width: no sideways scroll, with the shop list showing.
@@ -306,5 +317,6 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 /** CHANGELOG
  * v1.0 (2026-10-21): Search, keyboard entry, scores, drag reorder, counter editing, card editing, trash, picker drag, levels, persistence, phone width.
  * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove);
- *   Credit Card debt, interest, stickers, discount, money jokers; entry buttons minimize and leave the typing box.
+ *   Credit Card debt, interest, stickers, discount, money jokers; entry buttons minimize and leave the typing box;
+ *   free (couponed) cards while in debt.
  */

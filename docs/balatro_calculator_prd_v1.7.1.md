@@ -1,6 +1,6 @@
 ---
-file: balatro_calculator_prd_v1.7.md
-version: 1.7
+file: balatro_calculator_prd_v1.7.1.md
+version: 1.7.1
 author: Sam Cao
 created: 2026-10-20
 last_updated: 2026-10-21
@@ -13,7 +13,7 @@ ai_update: Update last_updated and version. Rename file to match. Append changel
 **Reference:** https://efhiii.github.io/balatro-calculator/ (source: github.com/EFHIII/balatro-calculator, MIT, last upstream commit 2026-07-09)
 **Rules reference:** https://balatrowiki.org/
 **Repo:** [zillaness/balatro](https://github.com/zillaness/balatro) (moved from `zillaness/games` branch `claude/jolly-heisenberg-qp9tux` on 2026-10-21)
-**Build:** `index.html` (v1.8), live at https://zillaness.github.io/Balatro/
+**Build:** `index.html` (v1.8.1), live at https://zillaness.github.io/Balatro/
 **Status:** Steps 1 to 5 and 7 done; save import (step 6) verified on a real save; shop compare (R18) built, reading offers from a real shop save not yet verified. Next: deck presets and the Play/Discard round flow.
 
 ---
@@ -164,7 +164,8 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 | Field names in a real save differ from what the reader expects (it was built without one). *Resolved 2026-10-21: verified on a real save (Small Blind, ante 2); every field matched.* | Unknown jokers and unreadable counters are reported, not guessed. Verify with `node tests/save_test.js save.jkr` on a real file. |
 | The game may only write `save.jkr` between rounds, not after each draw. | Unverified. If so, import still fills jokers, levels, and deck; you type the hand. Test with a real save in step 6. |
 | Save layout changes between game versions. | Parser reads by field name, ignores unknown fields, and reports what it couldn't map instead of guessing. |
-| Shop offers in a real save are stored differently than the reader expects (built from the game's save code, not a real shop save). | Unverified. Offers it can't read are skipped and typed-in offers still work. Verify with a save taken in the shop. |
+| Shop offers in a real save are stored differently than the reader expects (built from the game's save code, not a real shop save). *Resolved 2026-10-21: verified on a real shop save (ante 4, Coupon Tag applied, $3 in debt): offers, prices, couponed flags, debt limit, and editions all read correctly.* | Offers it can't read are skipped and typed-in offers still work. |
+| A shop save may be written before a skip tag applies (reported from other saves: tag still listed, joker at base price). The real save checked had the tag applied. | Unconfirmed when the game rewrites the file. A shop tag still in the save's tag list is warned about; the card it lands on can't be predicted from the save. |
 | Purchase ratings ignore future growth (scaling jokers rated at today's value), and play-dependent money jokers (Business Card, Mail-In Rebate) have no dollar estimate. | Notes on scaling and no-score jokers point to the tier and hover rules. Money, debt, interest, and stickers are counted since v1.8. |
 | Representative hands give an order that doesn't fit your real hand (Photograph, Hanging Chad, and other card-dependent jokers). | Standalone mode shows how consistent the order is across the sample hands and flags card-dependent jokers. |
 
@@ -180,3 +181,4 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 - v1.5 (2026-10-21): Discard advisor done and measured; save import verified on a real save; D17 publishing to main; D18 and R18 shop compare moved into scope.
 - v1.6 (2026-10-21): R18 shop compare built (step 7b) and how it differs from the plan; two shop risks; status and build version.
 - v1.7 (2026-10-21): R18 money rules, stickers, discount, money jokers, and chance effects (v1.8 build).
+- v1.7.1 (2026-10-21): Shop reader verified on a real save; skip-tag timing risk added (v1.8.1 build).

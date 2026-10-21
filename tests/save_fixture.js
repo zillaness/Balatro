@@ -1,6 +1,6 @@
 /**
  * @file save_fixture.js
- * @version 1.2
+ * @version 1.3
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -106,13 +106,28 @@ const SHOP_SAVE = {
   VERSION: '1.0.1o'
 };
 
+// Modelled on a real save taken after a Coupon Tag applied: $3 in Credit Card debt, every starting shop card $0 and
+// marked couponed, the tag list empty, and slots full (Credit Card is sellable here, not Eternal; Joker is Negative).
+const FREE_SAVE = JSON.parse(JSON.stringify(SHOP_SAVE));
+FREE_SAVE.GAME.dollars = -3;
+FREE_SAVE.GAME.shop_free = true;
+FREE_SAVE.cardAreas.jokers.config.card_limit = 5;
+FREE_SAVE.cardAreas.jokers.cards[4].ability = { set: 'Joker' };
+// The plain Joker is Negative here: selling it would take its extra slot along, so it must never be the one to sell.
+FREE_SAVE.cardAreas.jokers.cards[0].edition = { negative: true, type: 'negative' };
+for (const area of ['shop_jokers', 'shop_booster']) for (const c of FREE_SAVE.cardAreas[area].cards) { c.cost = 0; c.ability.couponed = true; }
+
+// A save written before a skip tag applied: the tag is still in the save's tag list.
+const PENDING_SAVE = { ...SHOP_SAVE, tags: [{ key: 'tag_negative', tally: 1, ability: {} }] };
+
 // save.jkr bytes: raw DEFLATE, as love.data.compress('deflate') writes them.
 const saveBytes = (save = SAVE) => zlib.deflateRawSync(Buffer.from(strPack(save)), { level: 1 });
 
-module.exports = { strPack, SAVE, SHOP_SAVE, card, joker, saveBytes };
+module.exports = { strPack, SAVE, SHOP_SAVE, FREE_SAVE, PENDING_SAVE, card, joker, saveBytes };
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Moved out of save_test.js so the UI test can drop the same save.
  * v1.1 (2026-10-21): SHOP_SAVE, a save taken in the shop.
  * v1.2 (2026-10-21): SHOP_SAVE gains Credit Card (Eternal), a discount, an edition, a Rental offer, Golden Joker, and Lucky and Steel cards.
+ * v1.3 (2026-10-21): FREE_SAVE (in debt, Coupon Tag applied) and PENDING_SAVE (tag not yet applied).
  */

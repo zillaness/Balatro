@@ -1,6 +1,6 @@
 /**
  * file: style.css
- * version: 1.2
+ * version: 1.2.1
  * author: Sam Cao
  * created: 2026-10-21
  * last_updated: 2026-10-21
@@ -473,6 +473,7 @@ button.collapse { padding: 3px 9px; min-width: 34px; }
 .shop-main select { font-size: 14px; margin-left: 4px; }
 .shop-note { font-size: 14px; }
 .sticker { font-size: 12px; padding: 0 5px; border-radius: 4px; background: #6b4fa0; color: #fff; vertical-align: middle; }
+.sticker.free { background: var(--money); color: #1d2a2d; }
 .shop-num { text-align: right; }
 .shop-num .big { font-size: 24px; }
 .shop-x { padding: 2px 8px; }
@@ -660,4 +661,5 @@ footer a { color: var(--muted); }
  * v1.1 (2026-10-21): Added since v1.0: optimizer, run strip and drop box, modifier tiles, advice, text card chips, collapsed panels,
  *   and the shop panel.
  * v1.2 (2026-10-21): Sticker tags in the shop; minimized entry hides the buttons but keeps the typing box.
+ * v1.2.1 (2026-10-21): Free (skip tag) label.
  */
