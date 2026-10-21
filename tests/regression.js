@@ -230,7 +230,22 @@ function main() {
   failures += lineupOk ? 0 : 1;
   console.log(`${lineupOk ? 'ok  ' : 'FAIL'}  purchase advice: Joker turns a 60-point pair into 180 (${(10 ** v0).toFixed(0)} -> ${(10 ** v1).toFixed(0)})`);
 
-  const total = CASES.length + ORDER_CASES.length + 5;
+  // A Polychrome Joker is worth X1.5 more than a plain one.
+  const [vPlain, vPoly] = S.lineupValues(base, [{ cards: pairEnc.cards, play: [0, 1] }], [1], [{ jokers: [A.encodeJoker({ id: 0 }, 0)] }, { jokers: [A.encodeJoker({ id: 0, edition: 'poly' }, 0)] }]);
+  const polyOk = Math.abs(vPoly - vPlain - Math.log10(1.5)) < 1e-9;
+  failures += polyOk ? 0 : 1;
+  console.log(`${polyOk ? 'ok  ' : 'FAIL'}  purchase advice: Polychrome adds exactly X1.5`);
+
+  // Lucky cards count at their average (1 in 5 for +20 Mult; about 30 x 10 = 300 expected), between the guaranteed
+  // 30 x 2 = 60 and the luckiest 30 x 42 = 1,260, and the same on every call so lineups compare on the same luck.
+  const luckyEnc = A.encodeState({ hand: [{ rank: 'K', suit: 's', enhancement: 'lucky' }, { rank: 'K', suit: 'h', enhancement: 'lucky' }] });
+  const luckyRun = () => S.lineupValues(base, [{ cards: luckyEnc.cards, play: [0, 1] }], [1], [{ jokers: [] }])[0];
+  const lv = luckyRun();
+  const luckyOk = lv > Math.log10(60) + 0.1 && lv < Math.log10(30 * 42) && lv === luckyRun();
+  failures += luckyOk ? 0 : 1;
+  console.log(`${luckyOk ? 'ok  ' : 'FAIL'}  purchase advice: Lucky cards count at their seeded average (${(10 ** lv).toFixed(0)}, guaranteed 60)`);
+
+  const total = CASES.length + ORDER_CASES.length + 7;
   console.log(`\n${total - failures}/${total} passed in ${Date.now() - t0} ms`);
   process.exit(failures ? 1 : 0);
 }
@@ -239,5 +254,5 @@ main();
 
 /** CHANGELOG
  * v1.0 (2026-10-20): 20 best-play cases and 3 joker-order cases against upstream 55322d5.
- * v1.1 (2026-10-21): Fast-best agreement, discard advice, and purchase-advice lineup value checks.
+ * v1.1 (2026-10-21): Fast-best agreement, discard advice, and purchase-advice lineup value checks (editions, Lucky cards).
  */

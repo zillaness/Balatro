@@ -1,6 +1,6 @@
 ---
 file: README.md
-version: 1.3
+version: 1.4
 author: Sam Cao
 created: 2026-10-21
 last_updated: 2026-10-21
@@ -17,7 +17,7 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 ## What it does
 
 - **Discard or play?** Compares playing now with sensible discards (keep your pairs, chase a flush or straight) by simulating the rest of the blind from your draw pile. Names the cards to discard and keep ("Discard K♠ Q♥ 9♦ 8♦ 7♦, keep 7♣ 5♣ 2♣"), outlines the discards in red, and shows each option's chance to clear the blind and the odds of your next hand.
-- **What to buy.** Rates each shop joker and planet by how much it raises your score on the hands you play most, using plays dealt from your own deck. Tries every slot (or replacing each joker when slots are full), shows the price against your money, and names the best buy. Reads the offers from a save taken in the shop, or add them with + Joker and + Planet.
+- **What to buy.** Rates each shop joker and planet by how much it raises your score on the hands you play most, using plays dealt from your own deck. Tries every slot (or replacing each joker when slots are full), shows the price against your money, and names the best buy. Counts Credit Card debt, the interest you'd lose, Eternal, Rental, and Perishable stickers, and your voucher discount; rates money jokers (Golden Joker, Rocket, Cloud 9...) in dollars per round. Reads the offers from a save taken in the shop, or add them with + Joker and + Planet.
 - **Best plays.** The top play for each hand type, ranked by guaranteed score, with chips × mult. The cards to play are outlined in your hand; click another play to outline its cards.
 - **Optimize joker order.** Tries every distinct joker order (up to 7 jokers, about a second) and shows the best one with Apply. With no hand entered it ranks orders on sample hands of a type you pick.
 - **Find jokers by name, rules, or looks.** Press `/` and type "banana", "green dice", or "crown". Every joker has a tier (S to D, an opinion you can change) and a hover card with its rules, appearance, and where it belongs in your lineup.
@@ -25,7 +25,7 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 - **Edit anything in place.** Click a card or joker to change its enhancement, edition, seal, or counter (Constellation's X Mult, Ride the Bus's Mult, and so on).
 - **Drag and drop.** Reorder jokers and cards, drag a joker from the picker into a slot, or drag anything to the trash.
 - **Hand levels on the main screen.** `+1` buttons labelled with each planet, and Black Hole.
-- **Minimize any section** with its ▾ button; the card entry buttons fold away separately. Remembered per browser.
+- **Minimize any section** with its ▾ button. **Buttons ▾** folds away the rank, suit, and modifier buttons and leaves the typing box (hover it for the shorthand). Remembered per browser.
 - **Load your run.** Drag `save.jkr` onto the drop box (or use Choose save.jkr) to fill in jokers, hand, levels, deck, chips needed, hands, discards, and (in the shop) the shop's offers. Read-only. Reload save picks it up again after each hand.
 
 ### Where save.jkr is
@@ -68,3 +68,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 - v1.2 (2026-10-21): Discards named in text; minimizable sections.
 - v1.2.1 (2026-10-21): Typical save paths, and that AppData and Library are hidden folders.
 - v1.3 (2026-10-21): What to buy (shop panel).
+- v1.4 (2026-10-21): Shop money rules and stickers; entry buttons fold away and leave the typing box.

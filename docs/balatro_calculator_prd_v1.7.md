@@ -1,6 +1,6 @@
 ---
-file: balatro_calculator_prd_v1.6.md
-version: 1.6
+file: balatro_calculator_prd_v1.7.md
+version: 1.7
 author: Sam Cao
 created: 2026-10-20
 last_updated: 2026-10-21
@@ -13,7 +13,7 @@ ai_update: Update last_updated and version. Rename file to match. Append changel
 **Reference:** https://efhiii.github.io/balatro-calculator/ (source: github.com/EFHIII/balatro-calculator, MIT, last upstream commit 2026-07-09)
 **Rules reference:** https://balatrowiki.org/
 **Repo:** [zillaness/balatro](https://github.com/zillaness/balatro) (moved from `zillaness/games` branch `claude/jolly-heisenberg-qp9tux` on 2026-10-21)
-**Build:** `index.html` (v1.7), live at https://zillaness.github.io/Balatro/
+**Build:** `index.html` (v1.8), live at https://zillaness.github.io/Balatro/
 **Status:** Steps 1 to 5 and 7 done; save import (step 6) verified on a real save; shop compare (R18) built, reading offers from a real shop save not yet verified. Next: deck presets and the Play/Discard round flow.
 
 ---
@@ -104,6 +104,7 @@ The reference calculator computes the right score but makes you work to ask the 
 - **R16. Save-file import.** *Done 2026-10-21.* Drag `save.jkr` onto the page, or choose it with Load save. Fills jokers (editions, counters, sell values), hand, hand levels, deck, Observatory planets, boss and deck flags, and a run strip (blind, chips needed and scored, hands and discards left, money, deck size). Works in every browser, including the claude.ai link. Read-only. Help text gives the Windows and Mac paths.
 - **R17. Drag and drop.** Reorder jokers and hand cards by dragging; drag a joker from the picker straight into a slot; drag anything onto the trash zone to remove it. Mouse drags at once; touch needs a short hold so lists still scroll.
 - **R18. Shop compare.** *Built 2026-10-21 (v1.7).* A "Shop: what to buy" panel. Offers come from a save taken in the shop (jokers with price and edition, planets, vouchers, packs), or you add them with + Joker (the picker in shop mode) and + Planet. Each joker is tried in every slot; when slots are full, in place of each of your jokers. Each planet adds one level to its hand (and feeds Constellation). Rated by average score change on 10 plays per hand type, for up to 3 hand types you've played most (weighted by times played), dealt from your own deck with 3 held cards; you can pick one hand type instead. Shows cost against your money, the slot or the joker to sell, tier, and notes for scaling and no-score jokers. Vouchers and packs are listed with prices, unrated.
+  *v1.8, after Sam found Credit Card ignored:* money rules come from the save: Credit Card debt counts toward what you can afford; each row notes debt and lost interest; Bull and Bootstraps are re-scored at your money after buying; Eternal jokers are never suggested for selling, Rental and Perishable offers say what they cost; typed-in prices take the voucher discount (Astronomer makes planets free); Golden Joker, Rocket, Cloud 9, To the Moon, Satellite, Egg, and Delayed Gratification show dollars per round and payback; chance effects (Lucky cards, Bloodstone) count at a seeded 48-run average instead of the guaranteed minimum.
   Differs from the plan above: your other jokers keep their order instead of being re-optimized (an exact order search for every variant would multiply the work by up to 5,040 at 7 jokers; the panel says to run Optimize order after buying), it rates plays dealt from your deck rather than your current hand (in the shop there is no hand), and it tries replacing every joker, not only the weakest.
 
 ### Out (v1)
@@ -164,7 +165,7 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 | The game may only write `save.jkr` between rounds, not after each draw. | Unverified. If so, import still fills jokers, levels, and deck; you type the hand. Test with a real save in step 6. |
 | Save layout changes between game versions. | Parser reads by field name, ignores unknown fields, and reports what it couldn't map instead of guessing. |
 | Shop offers in a real save are stored differently than the reader expects (built from the game's save code, not a real shop save). | Unverified. Offers it can't read are skipped and typed-in offers still work. Verify with a save taken in the shop. |
-| Purchase ratings ignore money, interest, and future growth (scaling jokers rated at today's value). | Notes on scaling and no-score jokers point to the tier; the headline flags when the best item isn't affordable. |
+| Purchase ratings ignore future growth (scaling jokers rated at today's value), and play-dependent money jokers (Business Card, Mail-In Rebate) have no dollar estimate. | Notes on scaling and no-score jokers point to the tier and hover rules. Money, debt, interest, and stickers are counted since v1.8. |
 | Representative hands give an order that doesn't fit your real hand (Photograph, Hanging Chad, and other card-dependent jokers). | Standalone mode shows how consistent the order is across the sample hands and flags card-dependent jokers. |
 
 ## CHANGELOG
@@ -178,3 +179,4 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 - v1.4.1 (2026-10-21): Moved to zillaness/balatro; paths updated (`vendor/`, `tests/`, build writes `index.html`).
 - v1.5 (2026-10-21): Discard advisor done and measured; save import verified on a real save; D17 publishing to main; D18 and R18 shop compare moved into scope.
 - v1.6 (2026-10-21): R18 shop compare built (step 7b) and how it differs from the plan; two shop risks; status and build version.
+- v1.7 (2026-10-21): R18 money rules, stickers, discount, money jokers, and chance effects (v1.8 build).

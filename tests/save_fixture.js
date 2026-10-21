@@ -1,6 +1,6 @@
 /**
  * @file save_fixture.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -69,22 +69,24 @@ const SAVE = {
   VERSION: '1.0.1o'
 };
 
-// A save taken in the shop: a clubs-heavy deck, Flush played most, and a shop offering one joker per suit,
-// two planets, a voucher, and a pack.
+// A save taken in the shop: a clubs-heavy deck (one Lucky, one Steel), Flush played most, an Eternal Credit Card
+// ($20 of debt allowed), Clearance Sale (25% off), and a shop with a Polychrome joker that costs more than the cash
+// on hand, a Rental joker, Golden Joker, two planets, a voucher, and a pack.
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
-const shopCard = (center, set, cost, ability = {}) => ({ save_fields: { center }, ability: { set, ...ability }, cost, sell_cost: Math.floor(cost / 2) });
+const shopCard = (center, set, cost, ability = {}, extra = {}) => ({ save_fields: { center }, ability: { set, ...ability }, cost, sell_cost: Math.floor(cost / 2), ...extra });
 const SHOP_SAVE = {
   cardAreas: {
-    jokers: { config: { card_limit: 5 }, cards: [joker('j_joker'), joker('j_jolly'), joker('j_droll'), joker('j_blueprint')] },
+    jokers: { config: { card_limit: 6 }, cards: [joker('j_joker'), joker('j_jolly'), joker('j_droll'), joker('j_blueprint'), joker('j_credit_card', { eternal: true })] },
     hand: { config: { card_limit: 8 }, cards: [] },
     deck: { config: { card_limit: 52 }, cards: [
-      ...RANKS.map(r => card('C_' + r)),
-      ...['H', 'D', 'S'].flatMap(su => ['A', 'K', '9', '5'].map(r => card(su + '_' + r)))
+      ...RANKS.map(r => card('C_' + r, r === 'A' ? 'm_lucky' : 'c_base')),
+      ...['H', 'D', 'S'].flatMap(su => ['A', 'K', '9', '5'].map(r => card(su + '_' + r, su + r === 'SK' ? 'm_steel' : 'c_base')))
     ] },
     consumeables: { cards: [] },
     shop_jokers: { cards: [
-      shopCard('j_gluttenous_joker', 'Joker', 5),
-      shopCard('j_greedy_joker', 'Joker', 5),
+      shopCard('j_gluttenous_joker', 'Joker', 10, {}, { edition: { polychrome: true, x_mult: 1.5, type: 'polychrome' } }),
+      shopCard('j_greedy_joker', 'Joker', 1, { rental: true }),
+      shopCard('j_golden', 'Joker', 6),
       shopCard('c_jupiter', 'Planet', 3, { consumeable: { hand_type: 'Flush' } }),
       shopCard('c_pluto', 'Planet', 3, { consumeable: { hand_type: 'High Card' } })
     ] },
@@ -92,7 +94,8 @@ const SHOP_SAVE = {
     shop_booster: { cards: [shopCard('p_arcana_normal_1', 'Booster', 4, { name: 'Arcana Pack' })] }
   },
   GAME: {
-    dollars: 9, chips: 0, skips: 0, starting_deck_size: 52,
+    dollars: 9, chips: 0, skips: 0, starting_deck_size: 52, bankrupt_at: -20, interest_cap: 25, discount_percent: 25,
+    consumeable_usage: { c_jupiter: { count: 2, set: 'Planet' }, c_mercury: { count: 1, set: 'Planet' }, c_fool: { count: 1, set: 'Tarot' } },
     round_resets: { ante: 2, hands: 4, discards: 3 },
     current_round: { hands_left: 0, discards_left: 1 },
     hands: { 'Flush': { level: 3, played: 12, played_this_round: 0 }, 'Pair': { level: 1, played: 6, played_this_round: 0 } }
@@ -111,4 +114,5 @@ module.exports = { strPack, SAVE, SHOP_SAVE, card, joker, saveBytes };
 /** CHANGELOG
  * v1.0 (2026-10-21): Moved out of save_test.js so the UI test can drop the same save.
  * v1.1 (2026-10-21): SHOP_SAVE, a save taken in the shop.
+ * v1.2 (2026-10-21): SHOP_SAVE gains Credit Card (Eternal), a discount, an edition, a Rental offer, Golden Joker, and Lucky and Steel cards.
  */

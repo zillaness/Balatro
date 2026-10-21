@@ -1,6 +1,6 @@
 /**
  * @file save_import.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -239,6 +239,12 @@ const SaveImport = (() => {
     }
   }
 
+  // Stake stickers: Eternal (can't be sold), Rental ($3 each round), Perishable (debuffed when its rounds run out).
+  function stickersOf(ab) {
+    if (!ab.eternal && !ab.rental && !ab.perishable) return null;
+    return { eternal: !!ab.eternal, rental: !!ab.rental, perishable: ab.perishable ? (typeof ab.perish_tally === 'number' ? ab.perish_tally : 5) : null };
+  }
+
   // "v_overstock_norm" -> "Overstock norm" when the card carries no name.
   const prettyKey = k => String(k || 'unknown').replace(/^[a-z]_/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
 
@@ -250,7 +256,7 @@ const SaveImport = (() => {
     const id = JOKER_KEYS[key];
     if (id !== undefined) {
       const value = counterFor(id, ab, ctx);
-      return { kind: 'joker', id, edition: editionOf(c.edition), value: isFinite(value) ? value : null, cost, sell: typeof c.sell_cost === 'number' ? c.sell_cost : null };
+      return { kind: 'joker', id, edition: editionOf(c.edition), value: isFinite(value) ? value : null, cost, sell: typeof c.sell_cost === 'number' ? c.sell_cost : null, stickers: stickersOf(ab) };
     }
     const hand = A.HAND_NAMES.indexOf(ab.consumeable?.hand_type ?? PLANET_HAND[key]);
     if (hand >= 0 && (ab.set === 'Planet' || PLANET_HAND[key])) return { kind: 'planet', hand, cost };
@@ -304,7 +310,7 @@ const SaveImport = (() => {
         warnings.push(`Couldn't read the counter for ${key}; check it in its editor`);
         value = 0;
       }
-      jokers.push({ id, edition, value: value || 0, debuffed: !!c.debuff, sell: typeof c.sell_cost === 'number' ? c.sell_cost : A.defaultSellValue(id, edition, typeof jokerPrice !== 'undefined' ? jokerPrice : []) });
+      jokers.push({ id, edition, value: value || 0, debuffed: !!c.debuff, sell: typeof c.sell_cost === 'number' ? c.sell_cost : A.defaultSellValue(id, edition, typeof jokerPrice !== 'undefined' ? jokerPrice : []), stickers: stickersOf(c.ability || {}) });
     }
 
     const levels = A.defaultLevels();
@@ -362,6 +368,14 @@ const SaveImport = (() => {
         jokerSlots: areas.jokers?.config?.card_limit ?? null,
         inShop: state === SHOP,
         counters,
+        // Money rules for purchase advice. Credit Card lowers bankrupt_at by 20; the rest are base game defaults.
+        debtLimit: Math.max(0, -(+G.bankrupt_at || 0)),
+        creditCards: jokers.filter(j => j.id === JOKER_KEYS.j_credit_card).length,
+        interestCap: typeof G.interest_cap === 'number' ? G.interest_cap : 25,
+        noInterest: !!G.modifiers?.no_interest,
+        discount: +G.discount_percent || 0,
+        discardsPerRound: G.round_resets?.discards ?? null,
+        planetsUsed: Object.values(G.consumeable_usage || {}).filter(u => u && u.set === 'Planet').length,
         version: root.VERSION || null
       },
       drawPile,
@@ -390,4 +404,6 @@ if (typeof module !== 'undefined') module.exports = SaveImport;
  *   against; field names follow the game's save code as best known.
  * v1.1 (2026-10-21): Shop offers (jokers with costs and counters, planets by hand, vouchers and packs by name), the full deck, and
  *   run-based counters for jokers bought later.
+ * v1.2 (2026-10-21): Joker stickers (Eternal, Rental, Perishable), debt limit (Credit Card), interest cap, discount, discards per
+ *   round, and unique planets used, for purchase advice.
  */

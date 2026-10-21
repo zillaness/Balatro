@@ -1,6 +1,6 @@
 /**
  * @file app.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -16,6 +16,13 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const uid = () => Math.random().toString(36).slice(2, 10);
   const canHover = matchMedia('(hover: hover)').matches;
+
+  // Hover text for the shorthand box: the minimized entry keeps only the box and this.
+  const TYPING_HELP = `Type or paste a hand, then press Enter:
+AH KC QD JS 10C   rank, then suit (h c d s)
+K Q 7 7   no suit yet; click a card later to set it
+KH:glass+red 7S:poly   modifiers after a colon, joined with +
+Or type anywhere on the page: K h g Enter = King of Hearts, Glass.`;
 
   // Hover text for every save button and the drop box. AppData and ~/Library are hidden folders, which is why people can't find them.
   const SAVE_WHERE_TEXT = `save.jkr is usually in:
@@ -639,6 +646,11 @@ Mac: ~/Library/Application Support/Balatro/1
   const SHOP_HELD = 3;
   const CONSTELLATION = 109;
   const STENCIL = 52;
+  const CREDIT_CARD = 15;
+  const BULL = 147;
+  const BOOTSTRAPS = 89;
+  const ASTRONOMER = 72;
+  const TO_THE_MOON = 138;
   // Straights by rank index (A.RANKS: 2 = 0 ... A = 12), ace-low first.
   const STRAIGHTS = [[12, 0, 1, 2, 3], ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => [k, k + 1, k + 2, k + 3, k + 4])];
 
@@ -654,7 +666,47 @@ Mac: ~/Library/Application Support/Balatro/1
   const shopSlots = () => state.shop.slots ?? state.run?.jokerSlots ?? Math.max(5, state.jokers.length);
   const shopMoney = () => state.shop.money ?? state.run?.dollars ?? null;
   const basePrice = id => jokerPrice[Math.floor(id / 10)]?.[id % 10] ?? 0;
-  const shopCost = it => it.cost ?? (it.kind === 'planet' ? 3 : basePrice(it.id) + (A.EDITION_COST[it.edition] || 0));
+  // Prices from a save are final. Typed-in offers are priced the way the game does it: base plus edition, plus 0.5,
+  // less the voucher discount (Clearance Sale, Liquidation), rounded down, at least $1. Astronomer makes planets free.
+  const discounted = c => Math.max(1, Math.floor((c + 0.5) * (100 - (state.run?.discount || 0)) / 100));
+  function shopCost(it) {
+    if (it.cost != null) return it.cost;
+    if (it.kind === 'planet') return state.jokers.some(j => j.id === ASTRONOMER) ? 0 : discounted(3);
+    if (it.kind === 'joker') return discounted(basePrice(it.id) + (A.EDITION_COST[it.edition] || 0));
+    return null;
+  }
+
+  // Debt you may go into: $20 per Credit Card you'd still own, plus any other allowance the save recorded.
+  function debtRoom(sold = null) {
+    const r = state.run;
+    const other = r?.debtLimit != null ? Math.max(0, r.debtLimit - 20 * (r.creditCards || 0)) : 0;
+    return other + 20 * state.jokers.filter(j => j.id === CREDIT_CARD && j !== sold).length;
+  }
+
+  // $1 per $5 held at the end of a round (+$1 more per To the Moon), up to the cap; nothing in debt or on Green Deck.
+  function interestOn(m, jokers = state.jokers) {
+    if (state.run?.noInterest || m == null || m <= 0) return 0;
+    return Math.min(Math.floor(m / 5), Math.floor((state.run?.interestCap ?? 25) / 5)) * (1 + jokers.filter(j => j.id === TO_THE_MOON).length);
+  }
+
+  // Bull and Bootstraps score from the money you hold, so they shrink when you spend.
+  const withMoney = (jokers, m) => (m == null ? jokers : jokers.map(j =>
+    j.id === BULL ? { ...j, value: Math.max(0, m) } : j.id === BOOTSTRAPS ? { ...j, value: Math.floor(Math.max(0, m) / 5) } : j));
+
+  // Money a joker makes each round, for the ones the run lets us work out. upTo: only if you play for it.
+  function incomeOf(it, moneyAfter) {
+    const deck = (state.fullDeck?.length ? state.fullDeck : standardDeck()).filter(c => c.enhancement !== 'stone');
+    switch (it.id) {
+      case 29: return { dollars: 4 };
+      case 128: return { dollars: 1, more: '+$2 more after each boss' };
+      case 127: return { dollars: deck.filter(c => A.normalizeRank(c.rank) === '9').length, more: 'one per 9 in your deck' };
+      case 138: return moneyAfter == null ? null : { dollars: interestOn(moneyAfter, [...state.jokers, it]) - interestOn(moneyAfter), more: 'extra interest at your money after buying' };
+      case 78: return { dollars: state.run?.planetsUsed ?? 0, more: 'one per kind of planet used' };
+      case 100: return { dollars: 3, more: 'as sell value' };
+      case 34: return { dollars: 2 * (state.run?.discardsPerRound ?? 3), upTo: true, more: 'only in rounds you use no discards' };
+    }
+    return null;
+  }
   const shopName = it => (it.kind === 'joker' ? byId[it.id].name : it.kind === 'planet' ? A.PLANETS[it.hand] : it.name);
 
   function seeded(seed) {
@@ -756,11 +808,13 @@ Mac: ~/Library/Application Support/Balatro/1
   function shopVariants(it) {
     const slots = shopSlots();
     const cur = state.jokers;
+    const money = shopMoney();
+    const after = sold => (money == null ? null : money - shopCost(it) + (sold ? sold.sell || 0 : 0));
     if (it.kind === 'planet') {
       const levels = state.levels.map((h, i) => (i === it.hand ? { ...h, level: h.level + 1 } : h));
       // Using a planet also feeds Constellation.
       const jokers = cur.map(j => (j.id === CONSTELLATION ? { ...j, value: (j.value || 0) + 1 } : j));
-      return [{ job: { jokers: encodeLineup(jokers, slots), hands: A.encodeLevels(levels) } }];
+      return [{ moneyAfter: after(null), job: { jokers: encodeLineup(withMoney(jokers, after(null)), slots), hands: A.encodeLevels(levels) } }];
     }
     const cand = {
       id: it.id, edition: it.edition || null,
@@ -773,16 +827,19 @@ Mac: ~/Library/Application Support/Balatro/1
     const tryAll = (rest, replace) => {
       for (let p = 0; p <= rest.length; p++) {
         const lineup = [...rest.slice(0, p), cand, ...rest.slice(p)];
-        out.push({ pos: p, count: lineup.length, replace, job: { jokers: encodeLineup(lineup, limit) } });
+        out.push({ pos: p, count: lineup.length, replace, moneyAfter: after(replace), job: { jokers: encodeLineup(withMoney(lineup, after(replace)), limit) } });
       }
     };
+    // Eternal jokers can't be sold, so they're never offered as the one to replace.
     if (negative || cur.length < slots) tryAll(cur, null);
-    else cur.forEach((j, r) => tryAll(cur.filter((_, i) => i !== r), j));
+    else cur.forEach((j, r) => { if (!j.stickers?.eternal) tryAll(cur.filter((_, i) => i !== r), j); });
     return out;
   }
 
   function shopSignature() {
-    return JSON.stringify([state.jokers.map(jokerKey), state.levels, state.flags.plasma, state.flags.observatory, state.shop, state.fullDeck?.length, state.run?.counters]);
+    const r = state.run || {};
+    return JSON.stringify([state.jokers.map(jokerKey), state.jokers.map(j => j.stickers || null), state.levels, state.flags.plasma, state.flags.observatory, state.shop, state.fullDeck?.length,
+      r.counters, r.dollars, r.debtLimit, r.creditCards, r.interestCap, r.noInterest, r.discount, r.planetsUsed, r.discardsPerRound]);
   }
 
   function scheduleShop() {
@@ -805,7 +862,7 @@ Mac: ~/Library/Application Support/Balatro/1
     const base = A.encodeState({ levels: state.levels, flags: { plasma: state.flags.plasma, observatory: state.flags.observatory } });
     delete base.cards;
     delete base.jokers;
-    const jobs = [{ jokers: encodeLineup(state.jokers, shopSlots()) }];
+    const jobs = [{ jokers: encodeLineup(withMoney(state.jokers, shopMoney()), shopSlots()) }];
     const plans = state.shop.items.filter(it => it.kind !== 'other').map(it => {
       const variants = shopVariants(it);
       const first = jobs.length;
@@ -829,7 +886,9 @@ Mac: ~/Library/Application Support/Balatro/1
         const results = plans.map(({ it, first, variants }) => {
           let best = null;
           variants.forEach((v, n) => { if (!best || values[first + n] > best.val + 1e-12) best = { ...v, val: values[first + n] }; });
-          return { it, gain: 10 ** (best.val - values[0]) - 1, pos: best.pos, count: best.count, replace: best.replace, tried: variants.length };
+          // No variant: slots full and every joker is Eternal.
+          if (!best) return { it, gain: null, noRoom: true, tried: 0 };
+          return { it, gain: 10 ** (best.val - values[0]) - 1, pos: best.pos, count: best.count, replace: best.replace, moneyAfter: best.moneyAfter, tried: variants.length };
         });
         shopRun.running = false;
         shopRun.result = { results, prof, ms: performance.now() - t0 };
@@ -841,6 +900,11 @@ Mac: ~/Library/Application Support/Balatro/1
 
   const fmtGain = g => (Math.abs(g) < 0.0005 ? '±0%' : g >= 9 ? `×${fmtNum(Math.round((1 + g) * 10) / 10)}` : `${g > 0 ? '+' : ''}${fmtNum(Math.round(g * 1000) / 10)}%`);
   const netCost = r => shopCost(r.it) - (r.replace ? r.replace.sell || 0 : 0);
+  // Affordable with cash, or with Credit Card debt (unless the joker you'd sell is the Credit Card).
+  const canAfford = (r, money) => money == null || netCost(r) <= money + debtRoom(r.replace);
+  const noScore = r => r.gain == null || Math.abs(r.gain) < 0.0005;
+  // Selling the replaced joker can bring back more than the offer costs.
+  const priceText = c => (c < 0 ? `with $${-c} back` : `for $${c}`);
 
   function shopWhere(r) {
     const it = r.it;
@@ -848,22 +912,40 @@ Mac: ~/Library/Application Support/Balatro/1
       const L = state.levels[it.hand].level;
       return `${A.HAND_NAMES[it.hand]} lvl ${L} → ${L + 1}${state.jokers.some(j => j.id === CONSTELLATION) ? ', and Constellation grows' : ''}`;
     }
-    if (r.replace) return `Slots full: sell <b>${esc(byId[r.replace.id].name)}</b> (+$${r.replace.sell || 0}) and put it in slot ${r.pos + 1} of ${r.count}`;
+    if (r.noRoom) return 'Slots full, and your jokers are all Eternal (they can\'t be sold)';
+    if (r.replace) return `Slots full: sell <b>${esc(byId[r.replace.id].name)}</b> (+$${r.replace.sell || 0}${r.replace.stickers?.rental ? ', and no more $3 rent' : ''}) and put it in slot ${r.pos + 1} of ${r.count}`;
     return `Put it in slot ${r.pos + 1} of ${r.count}${it.edition === 'negative' ? ' (Negative: no slot used)' : ''}`;
   }
 
-  function shopNote(r) {
+  function shopNotes(r, money) {
     const it = r.it;
+    const notes = [];
+    const st = it.stickers || {};
+    if (st.rental) notes.push('Rental: costs $3 at the end of every round.');
+    if (st.perishable != null) notes.push(`Perishable: stops working after ${st.perishable} rounds.`);
+    if (st.eternal) notes.push("Eternal: you can't sell it later.");
+    if (money != null && r.moneyAfter != null) {
+      if (r.moneyAfter < 0) notes.push(`Puts you $${-r.moneyAfter} into debt (Credit Card)${r.moneyAfter < -debtRoom(r.replace) ? ', more than it allows' : ''}.`);
+      const lost = interestOn(money) - interestOn(r.moneyAfter);
+      if (lost > 0 && it.id !== TO_THE_MOON) notes.push(`Costs $${lost} of interest next round.`);
+      if (state.jokers.some(j => j.id === BULL || j.id === BOOTSTRAPS) && shopCost(it) > 0) notes.push('Spending lowers Bull and Bootstraps; included.');
+    }
     if (it.kind === 'planet') {
-      return r.gain < 0.0005 && !shopRun.result.prof.types.some(([t]) => t === it.hand) ? `You rarely play ${A.HAND_NAMES[it.hand]}.` : '';
+      if (noScore(r) && !shopRun.result.prof.types.some(([t]) => t === it.hand)) notes.push(`You rarely play ${A.HAND_NAMES[it.hand]}.`);
+      return notes;
+    }
+    const inc = incomeOf(it, r.moneyAfter);
+    if (inc && inc.dollars > 0) {
+      const cost = netCost(r);
+      notes.push(`Earns ${inc.upTo ? 'up to ' : ''}$${inc.dollars} a round (${inc.more || 'end of round'})${cost > 0 ? `, pays for itself in ${Math.ceil(cost / inc.dollars)} round${Math.ceil(cost / inc.dollars) > 1 ? 's' : ''}` : ''}.`);
     }
     // Counter spec [kind, start, step per count, min]: a positive step grows (Ride the Bus), a negative one wears off (Ramen).
     const c = byId[it.id].c;
     const step = c && ['XMult', '+Mult', '+Chips'].includes(c[0]) && !SaveImport.RUN_COUNTERS.includes(it.id) ? c[2] : 0;
-    if (Math.abs(r.gain) < 0.0005) return `Adds no score on these plays${step > 0 ? ' yet' : ''}. Hover for what it does instead (money, cards, or utility).`;
-    if (step > 0) return 'Grows over the run; rated at its value today.';
-    if (step < 0) return 'Wears off as you play; rated at its value today.';
-    return '';
+    if (noScore(r) && !r.noRoom && !(inc && inc.dollars > 0)) notes.push(`Adds no score on these plays${step > 0 ? ' yet' : ''}. Hover for what it does instead (money, cards, or utility).`);
+    else if (step > 0) notes.push('Grows over the run; rated at its value today.');
+    else if (step < 0) notes.push('Wears off as you play; rated at its value today.');
+    return notes;
   }
 
   // In the shop there's no hand, so the shop list moves above the (empty) advice and plays.
@@ -891,18 +973,26 @@ Mac: ~/Library/Application Support/Balatro/1
     if (res.error) { box.innerHTML = `<div class="mult-c">Couldn't rate: ${esc(res.error)}</div>${othersHtml}`; return; }
 
     const money = shopMoney();
-    const afford = r => money == null || netCost(r) <= money;
-    const sorted = res.results.slice().sort((a, b) => b.gain - a.gain);
+    const debt = debtRoom();
+    const afford = r => canAfford(r, money);
+    const income = r => (r.it.kind === 'joker' && !r.noRoom ? incomeOf(r.it, r.moneyAfter)?.dollars || 0 : 0);
+    const sorted = res.results.slice().sort((a, b) => ((b.gain ?? -1) - (a.gain ?? -1)) || (income(b) - income(a)));
     const good = sorted.filter(r => r.gain >= 0.005);
     const nameOf = r => `<b>${esc(shopName(r.it))}</b>`;
+    const have = `$${money}${debt ? ` (+$${debt} Credit Card debt)` : ''}`;
     let headline;
     if (!good.length) headline = `<b>Nothing here raises your score</b> on these hands. Keep the money (interest), or buy for money and utility: check the tiers.`;
     else {
       const top = good[0];
       const can = good.find(afford);
-      if (afford(top)) headline = `<b>Best buy:</b> ${nameOf(top)}, <span class="money-c">${fmtGain(top.gain)}</span> score for $${netCost(top)}.`;
-      else if (can) headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}) but costs $${netCost(top)} and you have $${money}. <b>Best you can afford:</b> ${nameOf(can)}, <span class="money-c">${fmtGain(can.gain)}</span>.`;
-      else headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}), but you have $${money}: nothing here is affordable yet.`;
+      if (afford(top)) headline = `<b>Best buy:</b> ${nameOf(top)}, <span class="money-c">${fmtGain(top.gain)}</span> score ${priceText(netCost(top))}${money != null && netCost(top) > money ? ', using Credit Card debt' : ''}.`;
+      else if (can) headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}) but costs $${netCost(top)} and you have ${have}. <b>Best you can afford:</b> ${nameOf(can)}, <span class="money-c">${fmtGain(can.gain)}</span>.`;
+      else headline = `${nameOf(top)} scores most (${fmtGain(top.gain)}), but you have ${have}: nothing here is affordable yet.`;
+    }
+    const earner = sorted.filter(r => income(r) > 0 && afford(r)).sort((a, b) => netCost(a) / income(a) - netCost(b) / income(b))[0];
+    if (earner) {
+      const inc = incomeOf(earner.it, earner.moneyAfter);
+      headline += ` <b>Best money buy:</b> ${nameOf(earner)}, ${inc.upTo ? 'up to ' : ''}$${inc.dollars} a round${netCost(earner) > 0 ? `, paid back in ${Math.ceil(netCost(earner) / inc.dollars)}` : ''}.`;
     }
     const mix = res.prof.types.map(([t, w]) => `<b>${A.HAND_NAMES[t]}</b>${res.prof.types.length > 1 ? ` ${pct(w)}` : ''}`).join(' · ');
     const rows = sorted.map((r, n) => {
@@ -914,20 +1004,24 @@ Mac: ~/Library/Application Support/Balatro/1
       const ed = it.kind === 'joker' && it.source !== 'save'
         ? `<select data-act="shop-edition" data-sid="${it.sid}" title="Edition">${['', ...JOKER_EDITIONS].map(e => `<option value="${e}"${(it.edition || '') === e ? ' selected' : ''}>${e ? MOD_LABEL[e] : 'no edition'}</option>`).join('')}</select>`
         : it.edition ? `<span class="muted">${MOD_LABEL[it.edition]}</span>` : '';
-      const note = shopNote(r);
+      const note = shopNotes(r, money).join(' ');
+      const inc = noScore(r) ? income(r) : 0;
+      const big = r.noRoom ? '<div class="big muted">no room</div>'
+        : inc ? `<div class="big money-c">+$${inc}/round</div>`
+        : `<div class="big${r.gain >= 0.005 ? ' money-c' : r.gain <= -0.005 ? ' mult-c' : ''}">${fmtGain(r.gain)}</div>`;
       return `<div class="shop-row${n === 0 && r.gain >= 0.005 ? ' top' : ''}" ${it.kind === 'joker' ? `data-id="${it.id}"` : ''}>
         <div class="shop-pic">${pic}</div>
         <div class="shop-main">
-          <div>${esc(shopName(it))} ${ed}${it.source === 'save' ? ' <span class="muted">from save</span>' : ''}</div>
+          <div>${esc(shopName(it))} ${ed}${it.stickers ? ['eternal', 'rental', 'perishable'].filter(k => it.stickers[k] != null && it.stickers[k] !== false).map(k => ` <span class="sticker">${k[0].toUpperCase() + k.slice(1)}</span>`).join('') : ''}${it.source === 'save' ? ' <span class="muted">from save</span>' : ''}</div>
           <div class="muted">${shopWhere(r)}</div>
           ${note ? `<div class="muted shop-note">${note}</div>` : ''}
         </div>
-        <div class="shop-num"><div class="big${r.gain >= 0.005 ? ' money-c' : r.gain <= -0.005 ? ' mult-c' : ''}">${fmtGain(r.gain)}</div><div class="${money != null && cost > money ? 'mult-c' : 'muted'}" title="${money != null ? `You have $${money}` : ''}">$${cost}</div></div>
+        <div class="shop-num">${big}<div class="${!canAfford(r, money) ? 'mult-c' : 'muted'}" title="${money != null ? `You have ${have}` : ''}">${cost < 0 ? `+$${-cost} back` : `$${cost}`}</div></div>
         <button class="shop-x" data-act="shop-remove" data-sid="${it.sid}" title="Remove">✕</button>
       </div>`;
     }).join('');
     box.innerHTML = `<div class="adv-head">${headline}</div>${rows}${othersHtml}
-      <div class="muted adv-note">Rated on ${SHOP_PER_TYPE} plays each of ${mix}${state.shop.focus == null ? ' (the hands you play most)' : ''}, dealt from ${esc(res.prof.deckFrom)}, with ${SHOP_HELD} cards held. Score change is the average over those plays with the item in its best slot; your other jokers keep their order, so run Optimize order after buying. Scaling and money jokers are rated on what they do today.</div>`;
+      <div class="muted adv-note">Rated on ${SHOP_PER_TYPE} plays each of ${mix}${state.shop.focus == null ? ' (the hands you play most)' : ''}, dealt from ${esc(res.prof.deckFrom)}, with ${SHOP_HELD} cards held. Score change is the average over those plays with the item in its best slot; your other jokers keep their order, so run Optimize order after buying. Chance effects (Lucky cards, Bloodstone, Misprint) count at their average. Prices count Credit Card debt; what you spend comes off Bull, Bootstraps, and interest. Eternal jokers are never suggested for selling. Scaling jokers are rated at today's value.</div>`;
   }
 
   function addShopItem(item) {
@@ -1215,15 +1309,17 @@ Mac: ~/Library/Application Support/Balatro/1
     const box = $('#entry');
     box.innerHTML = `
       <div class="quick">
-        <input id="hand-text" type="text" autocomplete="off" spellcheck="false" placeholder="Type or paste a hand: AH, KC, QD, JS, 10C, 9C, 8S" aria-label="Hand shorthand">
+        <input id="hand-text" type="text" autocomplete="off" spellcheck="false" placeholder="Type or paste a hand: AH, KC, QD, JS, 10C, 9C, 8S" aria-label="Hand shorthand" title="${esc(TYPING_HELP)}">
         <button class="primary" data-act="add-text">Add cards <kbd>Enter</kbd></button>
       </div>
+      <div id="entry-buttons">
       <div class="btn-row"><span class="label">Rank</span>${RANK_KEYS.map(rk => btn('rank', rk, rk, false)).join('')}</div>
       <div class="btn-row"><span class="label">Suit</span>${A.SUITS.map(su => btn('suit', su, SUIT_SYMBOL[su] + ' ' + A.SUIT_NAMES[A.SUITS.indexOf(su)], live?.suit === su, 'suit-' + su)).join('')}</div>
       <div class="btn-row"><span class="label">Enhance</span>${ENHANCEMENTS.map(e => t('enhancement:' + e, MOD_LABEL[e], live?.enhancement === e, { ...sample, enhancement: e })).join('')}</div>
       <div class="btn-row"><span class="label">Edition</span>${CARD_EDITIONS.map(e => t('edition:' + e, MOD_LABEL[e], live?.edition === e, { ...sample, edition: e })).join('')}</div>
       <div class="btn-row"><span class="label">Seal</span>${SEALS.map(e => t('seal:' + e, MOD_LABEL[e], live?.seal === e, { ...sample, seal: e })).join('')}${t('debuffed:true', 'Debuffed', !!live?.debuffed, { ...sample, debuffed: true })}</div>
-      <div id="entry-preview">
+      </div>
+      <div id="entry-preview"${live ? '' : ' class="idle"'}>
         ${live ? Sprites.card(live) : ''}
         <span id="entry-text">${live ? `Editing <b>${esc(cardText(live))}</b>${live.suit ? '' : ' <span class="muted">(no suit yet)</span>'}` : '<span class="muted">Tap a rank to add a card, then its suit and modifiers if you like.</span>'}
           ${entry.word ? ` <span class="${r ? 'money-c' : 'mult-c'}">${esc(entry.word)}${r ? ' → ' + esc(r[0]) : ' ?'}</span>` : ''}
@@ -1725,9 +1821,12 @@ Mac: ~/Library/Application Support/Balatro/1
       const key = b.dataset.panel;
       const shut = !!state.ui.collapsed[key];
       b.setAttribute('aria-expanded', String(!shut));
-      b.textContent = key === 'entry' ? (shut ? 'Entry ▸' : 'Entry ▾') : (shut ? '▸' : '▾');
-      b.title = shut ? 'Expand' : (key === 'entry' ? 'Hide the card entry buttons' : 'Minimize');
-      if (key === 'entry') $('#entry').hidden = shut;
+      b.textContent = key === 'entry' ? (shut ? 'Buttons ▸' : 'Buttons ▾') : (shut ? '▸' : '▾');
+      b.title = key === 'entry'
+        ? (shut ? 'Show the rank, suit, and modifier buttons' : 'Hide the rank, suit, and modifier buttons (typing still works)')
+        : (shut ? 'Expand' : 'Minimize');
+      // The entry toggle folds away the buttons only; the typing box and its how-to stay.
+      if (key === 'entry') $('#entry').classList.toggle('min', shut);
       else document.querySelector(`.panel[data-panel="${key}"]`)?.classList.toggle('collapsed', shut);
     }
   }
@@ -1939,4 +2038,6 @@ Mac: ~/Library/Application Support/Balatro/1
  * v1.1 (2026-10-21): Added since v1.0 (page builds 1.1 to 1.7): joker order optimizer, save import with drop box and Reload save,
  *   quick and shorthand card entry, discard advice, minimizable sections, save-location tooltips, and the shop panel (purchase advice:
  *   offers from the save or typed in, rated on plays dealt from your deck for the hands you play most).
+ * v1.2 (2026-10-21): Shop advice: Credit Card debt, interest, Bull and Bootstraps, stickers, voucher discount, Astronomer, money
+ *   jokers per round. Entry toggle hides only the buttons; typing box keeps a how-to tooltip.
  */

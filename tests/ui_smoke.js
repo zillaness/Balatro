@@ -231,7 +231,11 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.click('[data-act=collapse][data-panel=levels]');
   check(await page.$eval('#levels-panel', e => e.classList.contains('collapsed')) && !(await page.isVisible('#levels')), 'hand levels section minimizes');
   await page.click('[data-act=collapse][data-panel=entry]');
-  check(!(await page.isVisible('#entry')) && await page.isVisible('#hand-row'), 'card entry hides while the hand stays');
+  check(!(await page.isVisible('#entry [data-act=rank]')) && !(await page.isVisible('#entry [data-act=suit]')) && await page.isVisible('#hand-text') && await page.isVisible('.keys-hint') && await page.isVisible('#hand-row'), 'minimized entry keeps the typing box and how-to, hides the buttons');
+  check(/KH:glass\+red/.test(await page.$eval('#hand-text', e => e.title)), 'typing box has a how-to tooltip');
+  await page.keyboard.type('Qd');
+  await page.keyboard.press('Enter');
+  check((await page.$$eval('#hand-row .slot', els => els.map(e => e.title))).includes('Q♦'), 'keyboard entry still works with the buttons hidden');
   await page.reload();
   check(await page.$eval('#levels-panel', e => e.classList.contains('collapsed')), 'minimized sections stay minimized after reload');
   await page.click('[data-act=collapse][data-panel=levels]');
@@ -243,21 +247,26 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   const shopRated = n => page.waitForFunction(k => document.querySelectorAll('#shop-body .shop-row').length === k && !/Rating/.test(document.querySelector('#shop-body').innerText), n, { timeout: 30000 });
   const shopNames = () => page.$$eval('#shop-body .shop-row', els => els.map(e => e.querySelector('.shop-main div').firstChild.textContent.trim()));
   await page.setInputFiles('#save-file', shopTmp);
-  await shopRated(4);
+  await shopRated(5);
   const names = await shopNames();
   const shopText = await page.$eval('#shop-body', e => e.innerText);
   check(names.indexOf('Gluttonous Joker') < names.indexOf('Greedy Joker') && names.indexOf('Jupiter') < names.indexOf('Pluto'), 'clubs flush run: Gluttonous over Greedy, Jupiter over Pluto', names.join(' | '));
   check(/Best buy: Gluttonous Joker/.test(shopText) && /Flush 67% · Pair 33%/.test(shopText) && /You rarely play High Card/.test(shopText), 'headline, played-hand mix, and planet note', shopText.split('\n')[0]);
   check(/Not rated: Arcana Pack \$4.*Overstock Voucher \$10/s.test(shopText), 'vouchers and packs listed with prices, not rated');
   check((await page.$eval('#shop-money', e => e.value)) === '9', 'money from the save');
+  // Credit Card: the $10 Polychrome Gluttonous is affordable with $9 cash, using its debt; spending costs interest.
+  const glut = await page.$eval('#shop-body .shop-row', e => [e.innerText, e.querySelector('.shop-num div:last-child').className]);
+  check(/Best buy: Gluttonous Joker.*using Credit Card debt/.test(shopText) && /\$1 into debt/.test(glut[0]) && /interest/.test(glut[0]) && !/mult-c/.test(glut[1]), 'Credit Card debt makes the $10 offer affordable, with debt and interest noted', glut[0].replace(/\s+/g, ' '));
+  check(/Rental/.test(shopText) && /\$3 at the end of every round/.test(shopText), 'Rental sticker shown with its cost');
+  check(/\+\$4\/round/.test(shopText) && /Best money buy: Golden Joker/.test(shopText), 'Golden Joker rated by money per round');
   check(await page.$eval('#shop-panel', e => e.getBoundingClientRect().top < document.querySelector('#advice-panel').getBoundingClientRect().top), 'with no hand, the shop list sits above discard advice');
 
-  // Full slots: each joker offer says which joker to sell.
-  await page.fill('#shop-slots', '4');
-  await page.dispatchEvent('#shop-slots', 'change');
-  await page.waitForFunction(() => /Slots full: sell/.test(document.querySelector('#shop-body').innerText), null, { timeout: 30000 });
-  check(true, 'full slots: offers name the joker to sell');
+  // Full slots: each joker offer says which joker to sell, never the Eternal Credit Card.
   await page.fill('#shop-slots', '5');
+  await page.dispatchEvent('#shop-slots', 'change');
+  await page.waitForFunction(() => /Slots full: sell/.test(document.querySelector('#shop-body').innerText) && !/Rating/.test(document.querySelector('#shop-body').innerText), null, { timeout: 30000 });
+  check(!/sell Credit Card/.test(await page.$eval('#shop-body', e => e.innerText)), 'full slots: offers name a joker to sell, never the Eternal one');
+  await page.fill('#shop-slots', '6');
   await page.dispatchEvent('#shop-slots', 'change');
 
   // Typed-in offers: + Joker opens the picker for the shop list; your own jokers don't change.
@@ -266,10 +275,12 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check(await page.isVisible('#picker-mode'), 'picker says it is adding to the shop list');
   await page.keyboard.type('baron');
   await page.keyboard.press('Enter');
-  await shopRated(5);
+  await shopRated(6);
   check((await jokerCells()).length === owned && (await shopNames()).includes('Baron'), 'Baron goes on the shop list, not into your jokers', (await shopNames()).join(' | '));
+  const baronCost = await page.$$eval('#shop-body .shop-row', els => els.find(e => /Baron/.test(e.innerText)).querySelector('.shop-num div:last-child').innerText);
+  check(baronCost === '$6', 'typed-in price takes the save\'s 25% discount ($8 Baron -> $6)', baronCost);
   await page.click('[data-act=shop-remove] >> nth=0');
-  await shopRated(4);
+  await shopRated(5);
   check(true, 'remove takes an offer off the list');
   require('fs').unlinkSync(shopTmp);
 
@@ -294,5 +305,6 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 
 /** CHANGELOG
  * v1.0 (2026-10-21): Search, keyboard entry, scores, drag reorder, counter editing, card editing, trash, picker drag, levels, persistence, phone width.
- * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove).
+ * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove);
+ *   Credit Card debt, interest, stickers, discount, money jokers; entry buttons minimize and leave the typing box.
  */

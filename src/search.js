@@ -1,6 +1,6 @@
 /**
  * @file search.js
- * @version 1.3
+ * @version 1.4
  * @author Sam Cao
  * @created 2026-10-20
  * @lastUpdated 2026-10-21
@@ -540,16 +540,39 @@ const BalatroSearch = (() => {
   // Each lineup's weighted mean log10 guaranteed score over the same sample plays, so lineups (with a shop joker in
   // some slot, or a planet's extra level) compare on identical cards. samples: [{cards, play}] with play the card
   // indexes to play (the rest are held); jobs: [{jokers, hands?}].
-  function lineupValues(base, samples, weights, jobs) {
+  // Chance effects (Lucky cards, Bloodstone, Misprint...) count at their average: a play whose best and worst
+  // differ is scored as the mean of seeded random runs.
+  function lineupValues(base, samples, weights, jobs, { runs = 48 } = {}) {
     return jobs.map(job => {
       let v = 0;
       samples.forEach((s, k) => {
         const enc = { ...base, hands: job.hands || base.hands, cards: s.cards, jokers: job.jokers };
         const [p] = evaluateSubsets(enc, job.jokers, { only: [s.play] });
-        v += weights[k] * log10Big(p.worst);
+        const score = cmpBig(p.worst, p.best) === 0 ? p.worst : meanScore(enc, job.jokers, p.order, runs, 1000 + k);
+        v += weights[k] * log10Big(score);
       });
       return v;
     });
+  }
+
+  // Mean of random runs of one play. The engine draws from Math.random, so it is swapped for a seeded generator:
+  // every lineup sees the same luck on the same sample, which keeps comparisons fair.
+  function meanScore(enc, jokers, order, runs, seed) {
+    const hand = newHand(enc);
+    const playedSet = new Set(order);
+    hand.jokers = jokers.map(a => a.slice());
+    hand.cards = order.map(i => enc.cards[i]);
+    hand.cardsInHand = enc.cards.filter((_, i) => !playedSet.has(i)).map(a => a.slice());
+    hand.compileAll();
+    const realRandom = Math.random;
+    Math.random = rng(seed);
+    try {
+      let sum = [0, 0];
+      for (let i = 0; i < runs; i++) sum = bigBigAdd(hand.simulateRandomHand(), sum);
+      return normalizeBig(bigTimes(1 / runs, sum));
+    } finally {
+      Math.random = realRandom;
+    }
   }
 
   return {
@@ -566,4 +589,5 @@ if (typeof module !== 'undefined') module.exports = BalatroSearch;
  * v1.1 (2026-10-21): Distinct joker orders scanned in slices across workers; hill climbing for 8+ jokers; sample hands.
  * v1.2 (2026-10-21): Discard advice: scoring subsets, fast best play, seeded rollouts over the draw pile.
  * v1.3 (2026-10-21): lineupValues for purchase advice: weighted mean log score of lineups over shared sample plays.
+ * v1.4 (2026-10-21): Purchase advice scores chance effects at their seeded average instead of the guaranteed minimum.
  */

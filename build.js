@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.7';
+const VERSION = '1.8';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
@@ -30,7 +30,8 @@ const CHANGELOG = [
   ['1.5.1', '2026-10-21', 'Advice names the cards to discard and to keep, and outlines the discards in red in your hand.'],
   ['1.6', '2026-10-21', 'Cards written out as text in advice and best plays. Sections can be minimized (remembered). Fixed advice running twice when chips needed was edited.'],
   ['1.6.1', '2026-10-21', 'Hovering the save buttons or the drop box shows where save.jkr usually is, and the help says AppData (Windows) and Library (Mac) are hidden folders.'],
-  ['1.7', '2026-10-21', 'Shop: what to buy. Rates shop jokers (every slot, or in place of each joker when slots are full) and planets by score gain on plays dealt from your deck for the hands you play most. Reads offers from a save taken in the shop, or add them with + Joker and + Planet. Shows cost against your money; vouchers and packs listed unrated.']
+  ['1.7', '2026-10-21', 'Shop: what to buy. Rates shop jokers (every slot, or in place of each joker when slots are full) and planets by score gain on plays dealt from your deck for the hands you play most. Reads offers from a save taken in the shop, or add them with + Joker and + Planet. Shows cost against your money; vouchers and packs listed unrated.'],
+  ['1.8', '2026-10-21', 'Shop advice counts Credit Card debt, lost interest, and Bull and Bootstraps shrinking when you spend; reads Eternal, Rental, and Perishable stickers (never suggests selling an Eternal joker); prices typed-in offers with your voucher discount and Astronomer; rates money jokers in dollars per round with payback; scores Lucky cards and other chance effects at their average. The Buttons toggle now hides only the rank, suit, and modifier buttons, leaving the typing box, its how-to, and a hover tip.']
 ];
 
 const ROOT = __dirname;

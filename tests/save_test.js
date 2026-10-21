@@ -1,6 +1,6 @@
 /**
  * @file save_test.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -59,10 +59,13 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   // A save taken in the shop: offers with prices, planets by hand, the rest by name.
   const sh = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack(SHOP_SAVE))));
   const offers = sh.shop.map(it => it.kind === 'joker' ? `joker ${it.id} $${it.cost}` : it.kind === 'planet' ? `planet ${it.hand} $${it.cost}` : `${it.what} ${it.name} $${it.cost}`);
-  check(offers.join(', ') === 'joker 19 $5, joker 16 $5, planet 6 $3, planet 11 $3, Pack Arcana Pack $4, Voucher Overstock $10', 'shop offers read from the save', offers);
+  check(offers.join(', ') === 'joker 19 $10, joker 16 $1, joker 29 $6, planet 6 $3, planet 11 $3, Pack Arcana Pack $4, Voucher Overstock $10', 'shop offers read from the save', offers);
+  check(sh.shop[0].edition === 'poly' && sh.shop[1].stickers?.rental && sh.jokers[4].stickers?.eternal, 'shop editions and stickers (Rental offer, Eternal Credit Card)', [sh.shop[0].edition, sh.shop[1].stickers, sh.jokers[4].stickers]);
+  const m = sh.run;
+  check(m.debtLimit === 20 && m.creditCards === 1 && m.interestCap === 25 && m.discount === 25 && m.discardsPerRound === 3 && m.planetsUsed === 2, 'money rules: $20 debt, interest cap, 25% off, 3 discards, 2 kinds of planet used', [m.debtLimit, m.creditCards, m.interestCap, m.discount, m.discardsPerRound, m.planetsUsed]);
   check(sh.run.inShop && !sh.warnings.length, 'in the shop, with no "no hand" warning', sh.warnings);
   check(sh.fullDeck.length === 25, 'full deck', sh.fullDeck.length);
-  check(sh.run.counters[52] === 1 && sh.run.counters[21] === 3, 'run counters for jokers bought later: Stencil 1 empty slot, Banner 3 discards', sh.run.counters);
+  check(sh.run.counters[52] === 1 && sh.run.counters[21] === 3 && sh.run.counters[27] === 1, 'run counters for jokers bought later: Stencil 1 empty slot, Banner 3 discards, 1 Steel card', sh.run.counters);
 
   // Unknown jokers and non-run files are reported, not guessed.
   const odd = await SaveImport.read(zlib.deflateRawSync(Buffer.from(strPack({ ...SAVE, cardAreas: { ...SAVE.cardAreas, jokers: { cards: [joker('j_modded_thing')] } } }))));
@@ -83,4 +86,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
 /** CHANGELOG
  * v1.0 (2026-10-21): Synthetic save in STR_PACK format: jokers, counters, editions, hand, levels, planets, flags, run info, error cases.
  * v1.1 (2026-10-21): Shop offers, full deck, and run counters from a save taken in the shop.
+ * v1.2 (2026-10-21): Shop editions, stickers, and money rules.
  */
