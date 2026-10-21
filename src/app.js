@@ -409,7 +409,7 @@
     ].filter(Boolean);
     box.innerHTML = `<span class="muted">${esc(r.file)} · loaded ${ago(r.loadedAt)}</span> ${bits.map(b => `<span>${b}</span>`).join('<span class="muted">·</span>')}
       ${r.warnings?.length ? `<span class="mult-c">${r.warnings.map(esc).join('; ')}</span>` : ''}
-      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button data-act="load-save">Load again</button><button data-act="run-close" title="Forget this save">✕</button>`;
+      <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button class="blue" data-act="load-save" title="Opens the file picker. Windows reopens the Balatro folder you used last, so double-click save.jkr. (Browsers can't re-read AppData by themselves.)">Reload save</button><button data-act="run-close" title="Forget this save">✕</button>`;
   }
 
   function saveHelpHtml() {
