@@ -402,6 +402,33 @@ button:disabled { opacity: .45; cursor: default; }
 .play { cursor: pointer; }
 .play.sel { box-shadow: inset 0 0 0 2px var(--money); }
 
+/* ---------- discard advice ---------- */
+
+#advice { display: grid; gap: 8px; }
+#advice-mini { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--bg-deep); line-height: 1.35; }
+#advice-mini .tag-adv { background: var(--money); color: #1d2a2d; border-radius: 5px; padding: 0 6px; margin-right: 6px; }
+#advice-mini a { color: var(--muted); }
+#advice .round { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); }
+#advice .round input { width: 96px; margin-left: 4px; }
+#advice .adv-head { font-size: 19px; line-height: 1.3; }
+.adv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .15);
+}
+.adv.top { box-shadow: inset 0 0 0 2px var(--money); }
+.adv .mini { display: inline-flex; gap: 3px; vertical-align: middle; flex-wrap: wrap; }
+.adv .mini .card { --s: .45; }
+.adv .odds { font-size: 15px; margin-top: 3px; }
+.adv-num { text-align: right; }
+.adv-num .big { font-size: 26px; }
+.adv-note { font-size: 14px; }
+.slot.dis > .card { outline: 3px solid var(--mult); outline-offset: 1px; border-radius: 6px; transform: translateY(8px); opacity: .8; }
+
 /* ---------- order optimizer ---------- */
 
 .opt {

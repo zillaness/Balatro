@@ -1,6 +1,6 @@
 ---
 file: README.md
-version: 1.0.1
+version: 1.1
 author: Sam Cao
 created: 2026-10-21
 last_updated: 2026-10-21
@@ -16,6 +16,7 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 
 ## What it does
 
+- **Discard or play?** Compares playing now with sensible discards (keep your pairs, chase a flush or straight) by simulating the rest of the blind from your draw pile. Shows each option's chance to clear the blind and the odds of your next hand, and outlines the cards to discard.
 - **Best plays.** The top play for each hand type, ranked by guaranteed score, with chips × mult. The cards to play are outlined in your hand; click another play to outline its cards.
 - **Optimize joker order.** Tries every distinct joker order (up to 7 jokers, about a second) and shows the best one with Apply. With no hand entered it ranks orders on sample hands of a type you pick.
 - **Find jokers by name, rules, or looks.** Press `/` and type "banana", "green dice", or "crown". Every joker has a tier (S to D, an opinion you can change) and a hover card with its rules, appearance, and where it belongs in your lineup.
@@ -23,7 +24,7 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 - **Edit anything in place.** Click a card or joker to change its enhancement, edition, seal, or counter (Constellation's X Mult, Ride the Bus's Mult, and so on).
 - **Drag and drop.** Reorder jokers and cards, drag a joker from the picker into a slot, or drag anything to the trash.
 - **Hand levels on the main screen.** `+1` buttons labelled with each planet, and Black Hole.
-- **Load your run.** Drag `save.jkr` onto the page (or use Load save) to fill in jokers, hand, levels, deck, and the blind. Read-only.
+- **Load your run.** Drag `save.jkr` onto the drop box (or use Choose save.jkr) to fill in jokers, hand, levels, deck, chips needed, hands, and discards. Read-only. Reload save picks it up again after each hand.
 
 ### Where save.jkr is
 
@@ -61,3 +62,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 
 - v1.0 (2026-10-21): Initial README for the move to zillaness/balatro.
 - v1.0.1 (2026-10-21): Site address uses the repo's capital B (/Balatro/); Pages paths are case-sensitive.
+- v1.1 (2026-10-21): Discard advice and the save drop box.

@@ -172,6 +172,9 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   check((await page.$$eval('#hand-row .slot', els => els.map(e => e.title))).join(' | ') === 'K♥ glass, red seal | 10♠ poly | A♦ debuffed | 7♣ steel | 2♥ stone', 'save import loads the hand', await page.$$eval('#hand-row .slot', els => els.map(e => e.title).join(' | ')));
   check(/The Flint/.test(await page.$eval('#run-strip', e => e.innerText)) && /300 of 1,200/.test(await page.$eval('#run-strip', e => e.innerText)), 'run strip shows blind and chips', await page.$eval('#run-strip', e => e.innerText.replace(/\s+/g, ' ')));
   check((await page.$eval('.lv[data-h="10"] .lvl-n', e => e.innerText)) === 'lvl 3', 'save import sets Pair to level 3');
+  await page.waitForSelector('#advice .adv', { timeout: 30000 });
+  check((await page.$eval('#advice-mini', e => !e.hidden && /Play now|Discard/.test(e.innerText))), 'discard advice appears under the hand after loading a save', await page.$eval('#advice-mini', e => e.innerText));
+  check((await page.$eval('#round-need', e => e.value)) === '900', 'chips needed comes from the save (1,200 - 300)');
   require('fs').unlinkSync(tmp);
 
   // Quick entry: ranks alone add cards with no suit; suits can be set later.

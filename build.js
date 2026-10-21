@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.4.3';
+const VERSION = '1.5';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-21';
 const CHANGELOG = [
@@ -25,7 +25,8 @@ const CHANGELOG = [
   ['1.4', '2026-10-21', 'Quick entry: a rank adds a card at once, suit and modifiers optional and editable later; cards without a suit count as mixed suits. Shorthand box and paste for hands like AH, KC, 10D (with :glass+red modifiers). Negative removed from playing cards (jokers only). Foil and Holo drawn as the game draws them, so Foil no longer looks like Glass.'],
   ['1.4.1', '2026-10-21', 'Favicon and home-screen icon (the classic Joker).'],
   ['1.4.2', '2026-10-21', 'Visible save drop box at the top of the page; help explains opening AppData with Win+R or the file dialog.'],
-  ['1.4.3', '2026-10-21', 'Load again renamed Reload save, with a note that the file picker reopens the last folder.']
+  ['1.4.3', '2026-10-21', 'Load again renamed Reload save, with a note that the file picker reopens the last folder.'],
+  ['1.5', '2026-10-21', 'Discard advice: compares playing now with sensible discards by simulating the rest of the blind from your draw pile; shows chance to clear, next-hand odds, and outlines the cards to discard. Chips, hands, and discards come from the save. Verified on a real save.']
 ];
 
 const ROOT = __dirname;

@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
-  file: index.html (Balatro Calculator v1.4.3)
-  version: 1.4.3
+  file: index.html (Balatro Calculator v1.5)
+  version: 1.5
   author: Sam Cao
   created: 2026-10-21
   last_updated: 2026-10-21
@@ -421,6 +421,33 @@ button:disabled { opacity: .45; cursor: default; }
 .play { cursor: pointer; }
 .play.sel { box-shadow: inset 0 0 0 2px var(--money); }
 
+/* ---------- discard advice ---------- */
+
+#advice { display: grid; gap: 8px; }
+#advice-mini { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--bg-deep); line-height: 1.35; }
+#advice-mini .tag-adv { background: var(--money); color: #1d2a2d; border-radius: 5px; padding: 0 6px; margin-right: 6px; }
+#advice-mini a { color: var(--muted); }
+#advice .round { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); }
+#advice .round input { width: 96px; margin-left: 4px; }
+#advice .adv-head { font-size: 19px; line-height: 1.3; }
+.adv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .15);
+}
+.adv.top { box-shadow: inset 0 0 0 2px var(--money); }
+.adv .mini { display: inline-flex; gap: 3px; vertical-align: middle; flex-wrap: wrap; }
+.adv .mini .card { --s: .45; }
+.adv .odds { font-size: 15px; margin-top: 3px; }
+.adv-num { text-align: right; }
+.adv-num .big { font-size: 26px; }
+.adv-note { font-size: 14px; }
+.slot.dis > .card { outline: 3px solid var(--mult); outline-offset: 1px; border-radius: 6px; transform: translateY(8px); opacity: .8; }
+
 /* ---------- order optimizer ---------- */
 
 .opt {
@@ -637,11 +664,14 @@ footer a { color: var(--muted); }
       <button data-act="clear-hand">Clear hand</button>
     </div>
     <div id="hand-row" class="row"></div>
+    <div id="advice-mini" hidden></div>
     <div id="entry"></div>
   </section>
 
   <section id="plays-panel" class="panel">
-    <div class="panel-head"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span></div>
+    <div class="panel-head"><h2>Discard or play?</h2><span class="muted">hover an option to see which cards</span></div>
+    <div id="advice"></div>
+    <div class="panel-head" style="margin-top:14px"><h2>Best plays</h2><span class="muted">guaranteed score first; ranges for chance-based effects</span></div>
     <div id="plays"></div>
   </section>
 
@@ -2732,7 +2762,7 @@ if (typeof module !== 'undefined') module.exports = BalatroAdapter;
 /* src/search.js */
 /**
  * @file search.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-20
  * @lastUpdated 2026-10-20
@@ -2811,7 +2841,7 @@ const BalatroSearch = (() => {
 
   // Every subset of 1..5 cards, each in its best play order, for one fixed joker order.
   // Mirrors the inner loop of upstream worker.js run() so results match it exactly.
-  function evaluateSubsets(enc, jokers, { allPerms = false } = {}) {
+  function evaluateSubsets(enc, jokers, { allPerms = false, only = null } = {}) {
     const hand = newHand(enc);
     hand.jokers = jokers.map(a => a.slice());
     hand.compileJokers();
@@ -2821,8 +2851,10 @@ const BalatroSearch = (() => {
     const idx = [...cards.keys()];
     const results = [];
 
-    for (let size = 1; size <= Math.min(5, cards.length); size++) {
-      for (const subset of choose(idx, size)) {
+    const subsets = only || [];
+    if (!only) for (let size = 1; size <= Math.min(5, cards.length); size++) subsets.push(...choose(idx, size));
+    {
+      for (const subset of subsets) {
         const tmpCards = cards.map(a => a.slice());
         hand.cards = subset.map(i => cards[i]);
         hand.cardsInHand = tmpCards.slice();
@@ -3023,9 +3055,252 @@ const BalatroSearch = (() => {
     return { best, current, evaluated: seen.size };
   }
 
+  // ---- discard advice ----
+
+  // Plays where every card scores: singles, same-rank groups, two pair, full house, flushes, straights
+  // (with Four Fingers, Shortcut, Smeared, Wild, Stone). The best play is almost always one of these,
+  // so simulations score only these instead of all 218 subsets of 8 cards. Returns null when a joker
+  // makes non-scoring cards matter (Splash, Blackboard, Raised Fist); callers then use every subset.
+  function scoringSubsets(cards, jokers) {
+    const has = id => jokers.some(j => j[JOKER] === id);
+    if (has(106) || has(102) || has(28)) return null;
+    const fourFingers = has(66);
+    const shortcut = has(123);
+    const smeared = has(64);
+    const out = new Map();
+    const add = idx => {
+      if (!idx.length || idx.length > 5) return;
+      const k = [...new Set(idx)].sort((a, b) => a - b);
+      out.set(k.join(','), k);
+    };
+    const quality = i => cards[i][EDITION] * 200 + (cards[i][SEAL] === RED_SEAL ? 150 : 0) + cards[i][ENHANCEMENT] * 20 + cards[i][RANK];
+    const stones = [];
+    const normal = [];
+    cards.forEach((c, i) => (c[ENHANCEMENT] === STONE ? stones : normal).push(i));
+    normal.sort((a, b) => quality(b) - quality(a));
+
+    const byRank = {};
+    for (const i of normal) (byRank[cards[i][RANK]] = byRank[cards[i][RANK]] || []).push(i);
+    for (const i of normal) add([i]);
+    const groups = Object.values(byRank).filter(g => g.length >= 2);
+    for (const g of groups) for (let k = 2; k <= Math.min(5, g.length); k++) for (const sub of choose(g, k)) add(sub);
+    for (let a = 0; a < groups.length; a++) {
+      for (let b = a + 1; b < groups.length; b++) {
+        for (const pa of choose(groups[a], 2)) for (const pb of choose(groups[b], 2)) add([...pa, ...pb]);
+        if (groups[a].length >= 3) for (const t of choose(groups[a], 3)) for (const pr of choose(groups[b], 2)) add([...t, ...pr]);
+        if (groups[b].length >= 3) for (const t of choose(groups[b], 3)) for (const pr of choose(groups[a], 2)) add([...t, ...pr]);
+      }
+    }
+
+    // Straights: one card per rank (every duplicate tried, so seals and editions count); ace also low.
+    const straights = (pool, lens) => {
+      const of = {};
+      for (const i of pool) (of[cards[i][RANK]] = of[cards[i][RANK]] || []).push(i);
+      const at = r => (r === -1 ? of[12] : of[r]) || [];
+      const res = [];
+      for (const len of lens) {
+        const walk = (r, picked) => {
+          if (picked.length === len) { res.push(picked.slice()); return; }
+          for (const step of shortcut ? [1, 2] : [1]) {
+            if (r + step > 12) continue;
+            for (const i of at(r + step)) { picked.push(i); walk(r + step, picked); picked.pop(); }
+          }
+        };
+        for (let r = -1; r <= 12; r++) for (const i of at(r)) walk(r, [i]);
+      }
+      return res;
+    };
+    const lens = fourFingers ? [4, 5] : [5];
+    const allStraights = straights(normal, lens);
+    allStraights.forEach(add);
+
+    const suitOf = c => (c[ENHANCEMENT] === WILD ? -1 : smeared ? c[SUIT] % 2 : c[SUIT]);
+    const need = fourFingers ? 4 : 5;
+    for (const s of smeared ? [0, 1] : [0, 1, 2, 3]) {
+      const g = normal.filter(i => suitOf(cards[i]) === s || suitOf(cards[i]) === -1);
+      if (g.length >= need) {
+        for (const sub of choose(g.slice(0, 8), Math.min(5, g.length))) add(sub);
+        if (fourFingers) for (const sub of choose(g.slice(0, 8), 4)) add(sub);
+      }
+      straights(g, lens).forEach(add);
+    }
+    // Four Fingers: a 4-card straight plus one more card that makes a 4-card flush is a Straight Flush.
+    if (fourFingers) {
+      for (const st of allStraights.filter(x => x.length === 4)) {
+        for (const extra of normal) {
+          if (st.includes(extra)) continue;
+          const u = [...st, extra];
+          const counts = {};
+          for (const i of u) { const sf = suitOf(cards[i]); if (sf === -1) for (let k = 0; k < 4; k++) counts[k] = (counts[k] || 0) + 1; else counts[sf] = (counts[sf] || 0) + 1; }
+          if (Object.values(counts).some(v => v >= 4)) add(u);
+        }
+      }
+    }
+
+    if (stones.length) {
+      for (const sub of [...out.values()]) if (sub.length < 5) add([...sub, ...stones.slice(0, 5 - sub.length)]);
+      add(stones.slice(0, 5));
+    }
+    return [...out.values()];
+  }
+
+  function bestOf(plays) {
+    let best = plays[0];
+    for (const p of plays) if (cmpPlay(p, best) > 0) best = p;
+    return best;
+  }
+
+  // Best play using only scoring subsets.
+  function fastBest(enc, jokers) {
+    return bestOf(evaluateSubsets(enc, jokers, { only: scoringSubsets(enc.cards, jokers) }));
+  }
+
+  // Small seeded generator so every option sees the same shuffled decks (common random numbers).
+  function rng(seed) {
+    let x = seed >>> 0 || 1;
+    return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+  }
+  function shuffled(arr, rand) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+
+  const FACE = new Set([9, 10, 11]);
+  // Scaling jokers that move during a round; the rest are held at their current values.
+  function afterPlay(jokers, played) {
+    for (const j of jokers) {
+      if (j[JOKER] === 112) j[VALUE] += 1;
+      else if (j[JOKER] === 104) j[VALUE] += 1;
+      else if (j[JOKER] === 61) j[VALUE] = played.some(c => FACE.has(c[RANK])) ? 0 : j[VALUE] + 1;
+    }
+  }
+  function afterDiscard(jokers, discarded) {
+    for (const j of jokers) {
+      if (j[JOKER] === 112) j[VALUE] = Math.max(0, j[VALUE] - 1);
+      else if (j[JOKER] === 152) j[VALUE] += discarded.length;
+      else if (j[JOKER] === 58) j[VALUE] += discarded.filter(c => c[RANK] === 9).length;
+    }
+  }
+
+  const scoreOf = p => p.worst[0] * 10 ** p.worst[1];
+
+  // One simulated finish of the blind. first: { discard: [hand indices] } or { play: true }.
+  // Policy after the first move: play the best hand when it keeps pace (score >= chips left / hands
+  // left) or no discards remain; otherwise discard the cards outside the best play (up to 5).
+  function rollout(enc, deck, round, first, rand) {
+    let hand = enc.cards.map(c => c.slice());
+    let draw = shuffled(deck, rand);
+    const jokers = enc.jokers.map(j => j.slice());
+    const hands = enc.hands.map(h => h.slice());
+    let need = round.need;
+    let handsLeft = round.hands;
+    let discardsLeft = round.discards;
+    let nextType = null;
+    let nextScore = null;
+    const refill = () => { while (hand.length < round.handSize && draw.length) hand.push(draw.shift()); };
+    const best = () => fastBest({ ...enc, cards: hand, jokers, hands }, jokers);
+
+    if (first.discard) {
+      const gone = new Set(first.discard);
+      const discarded = hand.filter((_, i) => gone.has(i));
+      hand = hand.filter((_, i) => !gone.has(i));
+      afterDiscard(jokers, discarded);
+      discardsLeft--;
+      refill();
+    }
+    let move = first.discard ? null : 'play';
+    while (handsLeft > 0 && need > 0 && hand.length) {
+      const b = best();
+      const score = scoreOf(b);
+      if (nextType === null) { nextType = b.handType; nextScore = score; if (round.oneStep) break; }
+      const others = hand.map((_, i) => i).filter(i => !b.subset.includes(i));
+      const behind = score < need / handsLeft;
+      if (move !== 'play' && behind && discardsLeft > 0 && others.length && draw.length) {
+        const drop = others.sort((x, y) => hand[x][RANK] - hand[y][RANK]).slice(0, 5);
+        const gone = new Set(drop);
+        afterDiscard(jokers, hand.filter((_, i) => gone.has(i)));
+        hand = hand.filter((_, i) => !gone.has(i));
+        discardsLeft--;
+        refill();
+        continue;
+      }
+      move = null;
+      const played = b.subset.map(i => hand[i]);
+      const playedSet = new Set(b.subset);
+      need -= score;
+      handsLeft--;
+      hands[b.handType][PLAYED]++;
+      hands[b.handType][PLAYED_THIS_ROUND] = 1;
+      afterPlay(jokers, played);
+      hand = hand.filter((_, i) => !playedSet.has(i));
+      refill();
+    }
+    return { cleared: need <= 0, nextType, nextScore };
+  }
+
+  // Sensible discards to compare with playing now: keep the best play, keep pairs and better, chase a
+  // flush (3+ of a suit) or a straight (3+ ranks within five), or keep the three highest cards.
+  const RANK_LABEL = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  // A discard is up to 5 cards; whether any discards are left is the caller's check.
+  function discardOptions(enc) {
+    const cards = enc.cards;
+    const all = cards.map((_, i) => i);
+    const opts = new Map();
+    const keepOnly = (keep, why) => {
+      const k = new Set(keep);
+      let drop = all.filter(i => !k.has(i));
+      if (!drop.length) return;
+      drop = drop.sort((a, b) => cards[a][RANK] - cards[b][RANK]).slice(0, 5);
+      const key = drop.slice().sort((a, b) => a - b).join(',');
+      if (!opts.has(key)) opts.set(key, { discard: drop.sort((a, b) => a - b), why });
+    };
+    const b = fastBest(enc, enc.jokers);
+    keepOnly(b.subset, 'keep your best play');
+    const byRank = {};
+    cards.forEach((c, i) => { if (c[ENHANCEMENT] !== STONE) (byRank[c[RANK]] = byRank[c[RANK]] || []).push(i); });
+    const multi = Object.values(byRank).filter(g => g.length >= 2);
+    if (multi.length) keepOnly(multi.flat(), 'keep pairs and better');
+    const top = multi.sort((x, y) => y.length - x.length || cards[y[0]][RANK] - cards[x[0]][RANK])[0];
+    if (top) keepOnly(top, 'keep your biggest set');
+    for (let s = 0; s < 4; s++) {
+      const g = all.filter(i => cards[i][SUIT] === s || cards[i][ENHANCEMENT] === WILD);
+      if (g.length >= 3) keepOnly(g, `chase a ${'♥♣♦♠'[s]} flush`);
+    }
+    for (let lo = -1; lo <= 8; lo++) {
+      const pick = [];
+      for (let r = lo; r < lo + 5; r++) {
+        const rr = r === -1 ? 12 : r;
+        const i = all.find(j => cards[j][RANK] === rr && cards[j][ENHANCEMENT] !== STONE && !pick.includes(j));
+        if (i !== undefined) pick.push(i);
+      }
+      if (pick.length >= 3) keepOnly(pick, `chase a ${RANK_LABEL[lo + 1]}-${RANK_LABEL[lo + 5]} straight`);
+    }
+    keepOnly(all.slice().sort((x, y) => cards[y][RANK] - cards[x][RANK]).slice(0, 3), 'keep your three highest');
+    return [...opts.values()].slice(0, 12);
+  }
+
+  // Runs `samples` finishes of the blind for each option. Same seeds for every option, so differences
+  // come from the choice rather than luck.
+  function adviseOptions(enc, deck, round, options, { samples = 200, seed = 1 } = {}) {
+    return options.map(opt => {
+      let cleared = 0;
+      let next = 0;
+      const types = {};
+      for (let k = 0; k < samples; k++) {
+        const r = rollout(enc, deck, round, opt, rng(seed + k * 7919));
+        if (r.cleared) cleared++;
+        next += r.nextScore || 0;
+        if (r.nextType !== null) types[r.nextType] = (types[r.nextType] || 0) + 1;
+      }
+      return { ...opt, clear: cleared / samples, meanNext: next / samples, types, samples };
+    });
+  }
+
   return {
     choose, permutations, cmpBig, cmpPlay, evaluateSubsets, detailPlay, bestPlays, bestJokerOrder, bestPlayFor,
-    distinctOrders, countDistinctOrders, scanOrders, climbOrders, log10Big
+    distinctOrders, countDistinctOrders, scanOrders, climbOrders, log10Big,
+    scoringSubsets, fastBest, discardOptions, adviseOptions, rollout
   };
 })();
 
@@ -3039,7 +3314,7 @@ if (typeof module !== 'undefined') module.exports = BalatroSearch;
 /* src/worker_main.js */
 /**
  * @file worker_main.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-21
@@ -3059,6 +3334,16 @@ self.onmessage = e => {
       const { encs, start, end } = e.data;
       const result = BalatroSearch.scanOrders(encs, start, end, done => postMessage({ type: 'order-progress', reqId, start, done }));
       postMessage({ type, reqId, start, result });
+    } else if (type === 'advise') {
+      // Options are rebuilt here (deterministic), so the page only sends which slice to run.
+      const { enc, deck, round, start, end, samples, seed } = e.data;
+      const options = [{ play: true, why: 'play your best hand now' }, ...(round.discards > 0 ? BalatroSearch.discardOptions(enc) : [])];
+      const results = BalatroSearch.adviseOptions(enc, deck, round, options.slice(start, end), { samples, seed });
+      postMessage({ type, reqId, start, total: options.length, results });
+    } else if (type === 'advise-count') {
+      const { enc, round } = e.data;
+      const n = 1 + (round.discards > 0 ? BalatroSearch.discardOptions(enc).length : 0);
+      postMessage({ type, reqId, total: n });
     } else if (type === 'order-climb') {
       const result = BalatroSearch.climbOrders(e.data.encs, e.data.starts, { maxEvals: e.data.maxEvals });
       postMessage({ type, reqId, result });
@@ -3071,6 +3356,7 @@ self.onmessage = e => {
 /** CHANGELOG
  * v1.0 (2026-10-21): Ranked plays request.
  * v1.1 (2026-10-21): Joker-order scans over a slice of orders, and hill climbing for 8+ jokers.
+ * v1.2 (2026-10-21): Discard advice over a slice of options.
  */
 
 </script>
@@ -4515,7 +4801,10 @@ const Sprites = (() => {
       levels: A.defaultLevels(),
       flags: { theFlint: false, theEye: false, plasma: false, observatory: false },
       tierOverrides: {},
-      run: null
+      run: null,
+      // Round for discard advice; filled from a save when one is loaded.
+      round: { need: null, hands: 4, discards: 3, handSize: 8 },
+      deck: null
     };
   }
 
@@ -4523,7 +4812,7 @@ const Sprites = (() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY));
       if (saved && Array.isArray(saved.jokers) && Array.isArray(saved.hand) && saved.levels?.length === 12) {
-        return { ...freshState(), ...saved };
+        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) } };
       }
     } catch (e) { /* private mode or bad data: start fresh */ }
     return freshState();
@@ -4543,6 +4832,7 @@ const Sprites = (() => {
     renderHand();
     renderLevels();
     if (opt.result && !opt.result.applied && !opt.running) renderOrderResult();
+    if (plays) scheduleAdvice();
     else if (opt.result?.applied) { opt.result = null; renderOrderResult(); }
     if (plays) schedulePlays();
   }
@@ -4568,6 +4858,7 @@ const Sprites = (() => {
         highlight = lastPlays[0]?.order || [];
         renderPlays();
         renderHand();
+        if (!adv.running) renderAdvice();
       }
     };
     worker.onerror = e => {
@@ -4798,6 +5089,13 @@ const Sprites = (() => {
       state.levels = r.levels;
       state.flags = r.flags;
       state.run = { ...r.run, file: file.name, loadedAt: Date.now(), fileTime: file.lastModified || null, warnings: r.warnings };
+      state.deck = r.drawPile.map(c => ({ ...c }));
+      state.round = {
+        need: r.run.chipsNeeded != null ? Math.max(0, r.run.chipsNeeded - (r.run.chipsScored || 0)) : state.round.need,
+        hands: r.run.handsLeft ?? state.round.hands,
+        discards: r.run.discardsLeft ?? state.round.discards,
+        handSize: r.run.handSize || Math.max(8, state.hand.length)
+      };
       opt.result = null;
       resetEntry();
       renderEntry();
@@ -4862,6 +5160,144 @@ const Sprites = (() => {
         Load it again after each hand to pick up new cards.</p>
       <p class="muted">Phone, Switch, and console saves can't be opened from a browser.</p>
       <div class="actions"><span class="spacer"></span><button data-act="close">Close</button><button class="primary" data-act="load-save">Choose save.jkr</button></div>`;
+  }
+
+  // ---------- discard advice ----------
+
+  let advPool = [];
+  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [] };
+  const ADV_SAMPLES = 240;
+
+  function killAdvPool() { advPool.forEach(w => w.terminate()); advPool = []; }
+  function getAdvPool() {
+    if (!advPool.length) {
+      const n = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4) - 2));
+      for (let i = 0; i < n; i++) advPool.push(new Worker(workerUrl));
+    }
+    return advPool;
+  }
+
+  // Draw pile: the save's when one is loaded, otherwise a standard 52-card deck minus the cards in hand.
+  function drawPile() {
+    if (state.deck) return { cards: state.deck, from: 'your save' };
+    const inHand = new Set(state.hand.filter(c => c.suit).map(c => A.normalizeRank(c.rank) + c.suit));
+    const cards = [];
+    for (const r of A.RANKS) for (const su of A.SUITS) if (!inHand.has(r + su)) cards.push({ rank: r, suit: su });
+    return { cards, from: 'a standard deck (assumed)' };
+  }
+
+  function scheduleAdvice() {
+    clearTimeout(adv.timer);
+    adv.reqId++;
+    killAdvPool();
+    adv.running = state.hand.length > 0;
+    renderAdvice();
+    if (adv.running) adv.timer = setTimeout(runAdvice, 450);
+  }
+
+  function runAdvice() {
+    const id = adv.reqId;
+    const r = state.round;
+    const round = {
+      need: r.need > 0 ? r.need : Infinity,
+      hands: Math.max(1, r.hands || 1),
+      discards: Math.max(0, r.discards || 0),
+      handSize: Math.max(r.handSize || 8, state.hand.length),
+      oneStep: !(r.need > 0)
+    };
+    const enc = engineState();
+    const deck = drawPile().cards.map((c, i) => A.encodeCard(c, 100 + i));
+    const workers = getAdvPool();
+    const results = [];
+    workers[0].onmessage = e => {
+      if (e.data.reqId !== id) return;
+      if (e.data.error) { adv.running = false; adv.result = { error: e.data.error }; renderAdvice(); return; }
+      const total = e.data.total;
+      const chunk = Math.ceil(total / workers.length);
+      const parts = Math.ceil(total / chunk);
+      let done = 0;
+      for (let k = 0; k < parts; k++) {
+        const w = workers[k];
+        w.onmessage = ev => {
+          const m = ev.data;
+          if (m.reqId !== id) return;
+          if (m.error) { adv.running = false; adv.result = { error: m.error }; renderAdvice(); return; }
+          results.push(...m.results);
+          if (++done === parts) { adv.running = false; adv.result = { results, round, deckFrom: drawPile().from, deckSize: deck.length }; renderAdvice(); }
+        };
+        w.postMessage({ type: 'advise', reqId: id, enc, deck, round, start: k * chunk, end: (k + 1) * chunk, samples: ADV_SAMPLES, seed: 1 });
+      }
+    };
+    workers[0].postMessage({ type: 'advise-count', reqId: id, enc, round });
+  }
+
+  const pct = x => `${Math.round(x * 100)}%`;
+
+  function optionLabel(o) {
+    if (o.play) {
+      const p = lastPlays[0];
+      return `<b>Play now</b>${p ? ` <span class="muted">${A.HAND_NAMES[p.handType]}, ${fmtBig(p.low)}</span>` : ''}`;
+    }
+    const cards = o.discard.map(i => state.hand[i]).filter(Boolean);
+    return `<b>Discard ${cards.length}</b> <span class="mini">${cards.map(c => Sprites.card(c)).join('')}</span> <span class="muted">${esc(o.why)}</span>`;
+  }
+
+  function typeOdds(o) {
+    const n = Object.values(o.types).reduce((a, b) => a + b, 0) || 1;
+    return Object.entries(o.types).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, v]) => `${A.HAND_NAMES[t]} ${pct(v / n)}`).join(' · ');
+  }
+
+  function renderAdvice() {
+    const box = $('#advice');
+    const mini = $('#advice-mini');
+    if (!box) return;
+    mini.hidden = true;
+    const r = state.round;
+    const inputs = `<div class="round">
+        <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" value="${r.need ?? ''}" placeholder="?"></label>
+        <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands" value="${r.hands}"></label>
+        <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards" value="${r.discards}"></label>
+      </div>`;
+    if (!state.hand.length) { box.innerHTML = inputs + '<div class="muted">Add your hand to get discard advice.</div>'; return; }
+    const res = adv.result;
+    if (adv.running || !res) { box.innerHTML = inputs + `<div class="muted">Simulating draws…</div>`; return; }
+    if (res.error) { box.innerHTML = inputs + `<div class="mult-c">Couldn't simulate: ${esc(res.error)}</div>`; return; }
+
+    const known = isFinite(res.round.need);
+    const sorted = res.results.slice().sort((a, b) => known ? (b.clear - a.clear) || (b.meanNext - a.meanNext) : (b.meanNext - a.meanNext));
+    const play = res.results.find(o => o.play);
+    const top = sorted[0];
+    const nowScore = lastPlays[0] ? lastPlays[0].low[0] * 10 ** lastPlays[0].low[1] : 0;
+    let headline;
+    if (known && nowScore >= res.round.need) headline = `<b>Play now.</b> Your best play scores ${fmtBig(lastPlays[0].low)}, enough to clear the blind.`;
+    else if (!res.round.discards) headline = `<b>Play now.</b> No discards left.`;
+    else if (known) {
+      headline = top.play || top.clear - play.clear < 0.05
+        ? `<b>Play now.</b> Discarding doesn't clearly help (best discard ${pct(sorted.find(o => !o.play)?.clear ?? 0)} vs ${pct(play.clear)} to clear).`
+        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
+    } else {
+      headline = top.play || top.meanNext < play.meanNext * 1.1
+        ? `<b>Play now.</b> No discard clearly improves your next hand. Enter chips needed for a clear-the-blind estimate.`
+        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
+    }
+    const shown = sorted.slice(0, 3);
+    if (!shown.includes(play)) shown.push(play);
+    // The same headline under the hand, so the advice is visible without scrolling.
+    mini.hidden = false;
+    mini.innerHTML = `<span class="tag-adv">Advice</span> ${headline} <a href="#plays-panel" class="muted">details</a>`;
+    box.innerHTML = inputs + `<div class="adv-head">${headline}</div>` + shown.map((o, n) => `<div class="adv${o === top ? ' top' : ''}" data-o="${res.results.indexOf(o)}">
+        <div>${optionLabel(o)}<div class="odds muted">next hand: ${typeOdds(o)}</div></div>
+        <div class="adv-num">${known ? `<div class="big">${pct(o.clear)}</div><div class="muted">to clear</div>` : `<div class="big">${fmtNum(Math.round(o.meanNext))}</div><div class="muted">avg next</div>`}</div>
+      </div>`).join('') +
+      `<div class="muted adv-note">Each option: ${res.results[0].samples} simulated draws from ${esc(res.deckFrom)} (${res.deckSize} cards), about ±3%. Assumes you then play your best hand each turn and discard when behind pace. Green Joker, Ramen, Hit the Road, Ride the Bus, and Ice Cream update as you go; other scaling jokers stay fixed.</div>`;
+  }
+
+  function onRoundInput(e) {
+    const k = e.target.dataset.k;
+    const v = e.target.value === '' ? null : Math.max(0, Math.round(+e.target.value));
+    state.round[k] = k === 'need' ? (v || null) : (v ?? state.round[k]);
+    save();
+    scheduleAdvice();
   }
 
   // ---------- formatting ----------
@@ -4960,7 +5396,7 @@ const Sprites = (() => {
       row.innerHTML = `<div class="empty-hint">Type ranks to add cards (<kbd>K</kbd> <kbd>Q</kbd> <kbd>7</kbd>), with a suit if you know it (<kbd>K</kbd> <kbd>h</kbd>), or paste a hand like <kbd>AH KC 10D</kbd>. Set suits and modifiers later by clicking a card.</div>`;
       return;
     }
-    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
+    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${adv.hover.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
   }
 
   // ---------- card entry ----------
@@ -5712,6 +6148,7 @@ const Sprites = (() => {
       if (e.target.closest('#popover') && popFor?.kind === 'joker') return onJokerEditor(e, 'input');
       if (e.target.closest('#levels')) return onLevelInput(e);
       if (e.target.dataset.act === 'opt-hand') { opt.handType = +e.target.value; optimize(); }
+      if (e.target.dataset.act === 'round') onRoundInput(e);
     });
 
     document.addEventListener('keydown', e => {
@@ -5747,6 +6184,10 @@ const Sprites = (() => {
     }
     document.addEventListener('mouseover', e => {
       if (drag.active) return;
+      const advRow = e.target.closest('.adv');
+      const o = advRow && adv.result?.results?.[+advRow.dataset.o];
+      const dis = o?.discard || [];
+      if (dis.join() !== adv.hover.join()) { adv.hover = dis; renderHand(); }
       const play = e.target.closest('.play');
       const next = (play ? lastPlays[+play.dataset.n] : lastPlays[selectedPlay])?.order || [];
       if (next.join() !== highlight.join()) { highlight = next; renderHand(); }
@@ -5815,4 +6256,5 @@ const Sprites = (() => {
   v1.4.1 (2026-10-21): Favicon and home-screen icon (the classic Joker).
   v1.4.2 (2026-10-21): Visible save drop box at the top of the page; help explains opening AppData with Win+R or the file dialog.
   v1.4.3 (2026-10-21): Load again renamed Reload save, with a note that the file picker reopens the last folder.
+  v1.5 (2026-10-21): Discard advice: compares playing now with sensible discards by simulating the rest of the blind from your draw pile; shows chance to clear, next-hand odds, and outlines the cards to discard. Chips, hands, and discards come from the save. Verified on a real save.
 -->

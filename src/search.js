@@ -1,6 +1,6 @@
 /**
  * @file search.js
- * @version 1.1
+ * @version 1.2
  * @author Sam Cao
  * @created 2026-10-20
  * @lastUpdated 2026-10-20
@@ -79,7 +79,7 @@ const BalatroSearch = (() => {
 
   // Every subset of 1..5 cards, each in its best play order, for one fixed joker order.
   // Mirrors the inner loop of upstream worker.js run() so results match it exactly.
-  function evaluateSubsets(enc, jokers, { allPerms = false } = {}) {
+  function evaluateSubsets(enc, jokers, { allPerms = false, only = null } = {}) {
     const hand = newHand(enc);
     hand.jokers = jokers.map(a => a.slice());
     hand.compileJokers();
@@ -89,8 +89,10 @@ const BalatroSearch = (() => {
     const idx = [...cards.keys()];
     const results = [];
 
-    for (let size = 1; size <= Math.min(5, cards.length); size++) {
-      for (const subset of choose(idx, size)) {
+    const subsets = only || [];
+    if (!only) for (let size = 1; size <= Math.min(5, cards.length); size++) subsets.push(...choose(idx, size));
+    {
+      for (const subset of subsets) {
         const tmpCards = cards.map(a => a.slice());
         hand.cards = subset.map(i => cards[i]);
         hand.cardsInHand = tmpCards.slice();
@@ -291,9 +293,252 @@ const BalatroSearch = (() => {
     return { best, current, evaluated: seen.size };
   }
 
+  // ---- discard advice ----
+
+  // Plays where every card scores: singles, same-rank groups, two pair, full house, flushes, straights
+  // (with Four Fingers, Shortcut, Smeared, Wild, Stone). The best play is almost always one of these,
+  // so simulations score only these instead of all 218 subsets of 8 cards. Returns null when a joker
+  // makes non-scoring cards matter (Splash, Blackboard, Raised Fist); callers then use every subset.
+  function scoringSubsets(cards, jokers) {
+    const has = id => jokers.some(j => j[JOKER] === id);
+    if (has(106) || has(102) || has(28)) return null;
+    const fourFingers = has(66);
+    const shortcut = has(123);
+    const smeared = has(64);
+    const out = new Map();
+    const add = idx => {
+      if (!idx.length || idx.length > 5) return;
+      const k = [...new Set(idx)].sort((a, b) => a - b);
+      out.set(k.join(','), k);
+    };
+    const quality = i => cards[i][EDITION] * 200 + (cards[i][SEAL] === RED_SEAL ? 150 : 0) + cards[i][ENHANCEMENT] * 20 + cards[i][RANK];
+    const stones = [];
+    const normal = [];
+    cards.forEach((c, i) => (c[ENHANCEMENT] === STONE ? stones : normal).push(i));
+    normal.sort((a, b) => quality(b) - quality(a));
+
+    const byRank = {};
+    for (const i of normal) (byRank[cards[i][RANK]] = byRank[cards[i][RANK]] || []).push(i);
+    for (const i of normal) add([i]);
+    const groups = Object.values(byRank).filter(g => g.length >= 2);
+    for (const g of groups) for (let k = 2; k <= Math.min(5, g.length); k++) for (const sub of choose(g, k)) add(sub);
+    for (let a = 0; a < groups.length; a++) {
+      for (let b = a + 1; b < groups.length; b++) {
+        for (const pa of choose(groups[a], 2)) for (const pb of choose(groups[b], 2)) add([...pa, ...pb]);
+        if (groups[a].length >= 3) for (const t of choose(groups[a], 3)) for (const pr of choose(groups[b], 2)) add([...t, ...pr]);
+        if (groups[b].length >= 3) for (const t of choose(groups[b], 3)) for (const pr of choose(groups[a], 2)) add([...t, ...pr]);
+      }
+    }
+
+    // Straights: one card per rank (every duplicate tried, so seals and editions count); ace also low.
+    const straights = (pool, lens) => {
+      const of = {};
+      for (const i of pool) (of[cards[i][RANK]] = of[cards[i][RANK]] || []).push(i);
+      const at = r => (r === -1 ? of[12] : of[r]) || [];
+      const res = [];
+      for (const len of lens) {
+        const walk = (r, picked) => {
+          if (picked.length === len) { res.push(picked.slice()); return; }
+          for (const step of shortcut ? [1, 2] : [1]) {
+            if (r + step > 12) continue;
+            for (const i of at(r + step)) { picked.push(i); walk(r + step, picked); picked.pop(); }
+          }
+        };
+        for (let r = -1; r <= 12; r++) for (const i of at(r)) walk(r, [i]);
+      }
+      return res;
+    };
+    const lens = fourFingers ? [4, 5] : [5];
+    const allStraights = straights(normal, lens);
+    allStraights.forEach(add);
+
+    const suitOf = c => (c[ENHANCEMENT] === WILD ? -1 : smeared ? c[SUIT] % 2 : c[SUIT]);
+    const need = fourFingers ? 4 : 5;
+    for (const s of smeared ? [0, 1] : [0, 1, 2, 3]) {
+      const g = normal.filter(i => suitOf(cards[i]) === s || suitOf(cards[i]) === -1);
+      if (g.length >= need) {
+        for (const sub of choose(g.slice(0, 8), Math.min(5, g.length))) add(sub);
+        if (fourFingers) for (const sub of choose(g.slice(0, 8), 4)) add(sub);
+      }
+      straights(g, lens).forEach(add);
+    }
+    // Four Fingers: a 4-card straight plus one more card that makes a 4-card flush is a Straight Flush.
+    if (fourFingers) {
+      for (const st of allStraights.filter(x => x.length === 4)) {
+        for (const extra of normal) {
+          if (st.includes(extra)) continue;
+          const u = [...st, extra];
+          const counts = {};
+          for (const i of u) { const sf = suitOf(cards[i]); if (sf === -1) for (let k = 0; k < 4; k++) counts[k] = (counts[k] || 0) + 1; else counts[sf] = (counts[sf] || 0) + 1; }
+          if (Object.values(counts).some(v => v >= 4)) add(u);
+        }
+      }
+    }
+
+    if (stones.length) {
+      for (const sub of [...out.values()]) if (sub.length < 5) add([...sub, ...stones.slice(0, 5 - sub.length)]);
+      add(stones.slice(0, 5));
+    }
+    return [...out.values()];
+  }
+
+  function bestOf(plays) {
+    let best = plays[0];
+    for (const p of plays) if (cmpPlay(p, best) > 0) best = p;
+    return best;
+  }
+
+  // Best play using only scoring subsets.
+  function fastBest(enc, jokers) {
+    return bestOf(evaluateSubsets(enc, jokers, { only: scoringSubsets(enc.cards, jokers) }));
+  }
+
+  // Small seeded generator so every option sees the same shuffled decks (common random numbers).
+  function rng(seed) {
+    let x = seed >>> 0 || 1;
+    return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+  }
+  function shuffled(arr, rand) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+
+  const FACE = new Set([9, 10, 11]);
+  // Scaling jokers that move during a round; the rest are held at their current values.
+  function afterPlay(jokers, played) {
+    for (const j of jokers) {
+      if (j[JOKER] === 112) j[VALUE] += 1;
+      else if (j[JOKER] === 104) j[VALUE] += 1;
+      else if (j[JOKER] === 61) j[VALUE] = played.some(c => FACE.has(c[RANK])) ? 0 : j[VALUE] + 1;
+    }
+  }
+  function afterDiscard(jokers, discarded) {
+    for (const j of jokers) {
+      if (j[JOKER] === 112) j[VALUE] = Math.max(0, j[VALUE] - 1);
+      else if (j[JOKER] === 152) j[VALUE] += discarded.length;
+      else if (j[JOKER] === 58) j[VALUE] += discarded.filter(c => c[RANK] === 9).length;
+    }
+  }
+
+  const scoreOf = p => p.worst[0] * 10 ** p.worst[1];
+
+  // One simulated finish of the blind. first: { discard: [hand indices] } or { play: true }.
+  // Policy after the first move: play the best hand when it keeps pace (score >= chips left / hands
+  // left) or no discards remain; otherwise discard the cards outside the best play (up to 5).
+  function rollout(enc, deck, round, first, rand) {
+    let hand = enc.cards.map(c => c.slice());
+    let draw = shuffled(deck, rand);
+    const jokers = enc.jokers.map(j => j.slice());
+    const hands = enc.hands.map(h => h.slice());
+    let need = round.need;
+    let handsLeft = round.hands;
+    let discardsLeft = round.discards;
+    let nextType = null;
+    let nextScore = null;
+    const refill = () => { while (hand.length < round.handSize && draw.length) hand.push(draw.shift()); };
+    const best = () => fastBest({ ...enc, cards: hand, jokers, hands }, jokers);
+
+    if (first.discard) {
+      const gone = new Set(first.discard);
+      const discarded = hand.filter((_, i) => gone.has(i));
+      hand = hand.filter((_, i) => !gone.has(i));
+      afterDiscard(jokers, discarded);
+      discardsLeft--;
+      refill();
+    }
+    let move = first.discard ? null : 'play';
+    while (handsLeft > 0 && need > 0 && hand.length) {
+      const b = best();
+      const score = scoreOf(b);
+      if (nextType === null) { nextType = b.handType; nextScore = score; if (round.oneStep) break; }
+      const others = hand.map((_, i) => i).filter(i => !b.subset.includes(i));
+      const behind = score < need / handsLeft;
+      if (move !== 'play' && behind && discardsLeft > 0 && others.length && draw.length) {
+        const drop = others.sort((x, y) => hand[x][RANK] - hand[y][RANK]).slice(0, 5);
+        const gone = new Set(drop);
+        afterDiscard(jokers, hand.filter((_, i) => gone.has(i)));
+        hand = hand.filter((_, i) => !gone.has(i));
+        discardsLeft--;
+        refill();
+        continue;
+      }
+      move = null;
+      const played = b.subset.map(i => hand[i]);
+      const playedSet = new Set(b.subset);
+      need -= score;
+      handsLeft--;
+      hands[b.handType][PLAYED]++;
+      hands[b.handType][PLAYED_THIS_ROUND] = 1;
+      afterPlay(jokers, played);
+      hand = hand.filter((_, i) => !playedSet.has(i));
+      refill();
+    }
+    return { cleared: need <= 0, nextType, nextScore };
+  }
+
+  // Sensible discards to compare with playing now: keep the best play, keep pairs and better, chase a
+  // flush (3+ of a suit) or a straight (3+ ranks within five), or keep the three highest cards.
+  const RANK_LABEL = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  // A discard is up to 5 cards; whether any discards are left is the caller's check.
+  function discardOptions(enc) {
+    const cards = enc.cards;
+    const all = cards.map((_, i) => i);
+    const opts = new Map();
+    const keepOnly = (keep, why) => {
+      const k = new Set(keep);
+      let drop = all.filter(i => !k.has(i));
+      if (!drop.length) return;
+      drop = drop.sort((a, b) => cards[a][RANK] - cards[b][RANK]).slice(0, 5);
+      const key = drop.slice().sort((a, b) => a - b).join(',');
+      if (!opts.has(key)) opts.set(key, { discard: drop.sort((a, b) => a - b), why });
+    };
+    const b = fastBest(enc, enc.jokers);
+    keepOnly(b.subset, 'keep your best play');
+    const byRank = {};
+    cards.forEach((c, i) => { if (c[ENHANCEMENT] !== STONE) (byRank[c[RANK]] = byRank[c[RANK]] || []).push(i); });
+    const multi = Object.values(byRank).filter(g => g.length >= 2);
+    if (multi.length) keepOnly(multi.flat(), 'keep pairs and better');
+    const top = multi.sort((x, y) => y.length - x.length || cards[y[0]][RANK] - cards[x[0]][RANK])[0];
+    if (top) keepOnly(top, 'keep your biggest set');
+    for (let s = 0; s < 4; s++) {
+      const g = all.filter(i => cards[i][SUIT] === s || cards[i][ENHANCEMENT] === WILD);
+      if (g.length >= 3) keepOnly(g, `chase a ${'♥♣♦♠'[s]} flush`);
+    }
+    for (let lo = -1; lo <= 8; lo++) {
+      const pick = [];
+      for (let r = lo; r < lo + 5; r++) {
+        const rr = r === -1 ? 12 : r;
+        const i = all.find(j => cards[j][RANK] === rr && cards[j][ENHANCEMENT] !== STONE && !pick.includes(j));
+        if (i !== undefined) pick.push(i);
+      }
+      if (pick.length >= 3) keepOnly(pick, `chase a ${RANK_LABEL[lo + 1]}-${RANK_LABEL[lo + 5]} straight`);
+    }
+    keepOnly(all.slice().sort((x, y) => cards[y][RANK] - cards[x][RANK]).slice(0, 3), 'keep your three highest');
+    return [...opts.values()].slice(0, 12);
+  }
+
+  // Runs `samples` finishes of the blind for each option. Same seeds for every option, so differences
+  // come from the choice rather than luck.
+  function adviseOptions(enc, deck, round, options, { samples = 200, seed = 1 } = {}) {
+    return options.map(opt => {
+      let cleared = 0;
+      let next = 0;
+      const types = {};
+      for (let k = 0; k < samples; k++) {
+        const r = rollout(enc, deck, round, opt, rng(seed + k * 7919));
+        if (r.cleared) cleared++;
+        next += r.nextScore || 0;
+        if (r.nextType !== null) types[r.nextType] = (types[r.nextType] || 0) + 1;
+      }
+      return { ...opt, clear: cleared / samples, meanNext: next / samples, types, samples };
+    });
+  }
+
   return {
     choose, permutations, cmpBig, cmpPlay, evaluateSubsets, detailPlay, bestPlays, bestJokerOrder, bestPlayFor,
-    distinctOrders, countDistinctOrders, scanOrders, climbOrders, log10Big
+    distinctOrders, countDistinctOrders, scanOrders, climbOrders, log10Big,
+    scoringSubsets, fastBest, discardOptions, adviseOptions, rollout
   };
 })();
 

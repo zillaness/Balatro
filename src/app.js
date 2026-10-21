@@ -76,7 +76,10 @@
       levels: A.defaultLevels(),
       flags: { theFlint: false, theEye: false, plasma: false, observatory: false },
       tierOverrides: {},
-      run: null
+      run: null,
+      // Round for discard advice; filled from a save when one is loaded.
+      round: { need: null, hands: 4, discards: 3, handSize: 8 },
+      deck: null
     };
   }
 
@@ -84,7 +87,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY));
       if (saved && Array.isArray(saved.jokers) && Array.isArray(saved.hand) && saved.levels?.length === 12) {
-        return { ...freshState(), ...saved };
+        return { ...freshState(), ...saved, round: { ...freshState().round, ...(saved.round || {}) } };
       }
     } catch (e) { /* private mode or bad data: start fresh */ }
     return freshState();
@@ -104,6 +107,7 @@
     renderHand();
     renderLevels();
     if (opt.result && !opt.result.applied && !opt.running) renderOrderResult();
+    if (plays) scheduleAdvice();
     else if (opt.result?.applied) { opt.result = null; renderOrderResult(); }
     if (plays) schedulePlays();
   }
@@ -129,6 +133,7 @@
         highlight = lastPlays[0]?.order || [];
         renderPlays();
         renderHand();
+        if (!adv.running) renderAdvice();
       }
     };
     worker.onerror = e => {
@@ -359,6 +364,13 @@
       state.levels = r.levels;
       state.flags = r.flags;
       state.run = { ...r.run, file: file.name, loadedAt: Date.now(), fileTime: file.lastModified || null, warnings: r.warnings };
+      state.deck = r.drawPile.map(c => ({ ...c }));
+      state.round = {
+        need: r.run.chipsNeeded != null ? Math.max(0, r.run.chipsNeeded - (r.run.chipsScored || 0)) : state.round.need,
+        hands: r.run.handsLeft ?? state.round.hands,
+        discards: r.run.discardsLeft ?? state.round.discards,
+        handSize: r.run.handSize || Math.max(8, state.hand.length)
+      };
       opt.result = null;
       resetEntry();
       renderEntry();
@@ -423,6 +435,144 @@
         Load it again after each hand to pick up new cards.</p>
       <p class="muted">Phone, Switch, and console saves can't be opened from a browser.</p>
       <div class="actions"><span class="spacer"></span><button data-act="close">Close</button><button class="primary" data-act="load-save">Choose save.jkr</button></div>`;
+  }
+
+  // ---------- discard advice ----------
+
+  let advPool = [];
+  const adv = { reqId: 0, timer: null, result: null, running: false, hover: [] };
+  const ADV_SAMPLES = 240;
+
+  function killAdvPool() { advPool.forEach(w => w.terminate()); advPool = []; }
+  function getAdvPool() {
+    if (!advPool.length) {
+      const n = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4) - 2));
+      for (let i = 0; i < n; i++) advPool.push(new Worker(workerUrl));
+    }
+    return advPool;
+  }
+
+  // Draw pile: the save's when one is loaded, otherwise a standard 52-card deck minus the cards in hand.
+  function drawPile() {
+    if (state.deck) return { cards: state.deck, from: 'your save' };
+    const inHand = new Set(state.hand.filter(c => c.suit).map(c => A.normalizeRank(c.rank) + c.suit));
+    const cards = [];
+    for (const r of A.RANKS) for (const su of A.SUITS) if (!inHand.has(r + su)) cards.push({ rank: r, suit: su });
+    return { cards, from: 'a standard deck (assumed)' };
+  }
+
+  function scheduleAdvice() {
+    clearTimeout(adv.timer);
+    adv.reqId++;
+    killAdvPool();
+    adv.running = state.hand.length > 0;
+    renderAdvice();
+    if (adv.running) adv.timer = setTimeout(runAdvice, 450);
+  }
+
+  function runAdvice() {
+    const id = adv.reqId;
+    const r = state.round;
+    const round = {
+      need: r.need > 0 ? r.need : Infinity,
+      hands: Math.max(1, r.hands || 1),
+      discards: Math.max(0, r.discards || 0),
+      handSize: Math.max(r.handSize || 8, state.hand.length),
+      oneStep: !(r.need > 0)
+    };
+    const enc = engineState();
+    const deck = drawPile().cards.map((c, i) => A.encodeCard(c, 100 + i));
+    const workers = getAdvPool();
+    const results = [];
+    workers[0].onmessage = e => {
+      if (e.data.reqId !== id) return;
+      if (e.data.error) { adv.running = false; adv.result = { error: e.data.error }; renderAdvice(); return; }
+      const total = e.data.total;
+      const chunk = Math.ceil(total / workers.length);
+      const parts = Math.ceil(total / chunk);
+      let done = 0;
+      for (let k = 0; k < parts; k++) {
+        const w = workers[k];
+        w.onmessage = ev => {
+          const m = ev.data;
+          if (m.reqId !== id) return;
+          if (m.error) { adv.running = false; adv.result = { error: m.error }; renderAdvice(); return; }
+          results.push(...m.results);
+          if (++done === parts) { adv.running = false; adv.result = { results, round, deckFrom: drawPile().from, deckSize: deck.length }; renderAdvice(); }
+        };
+        w.postMessage({ type: 'advise', reqId: id, enc, deck, round, start: k * chunk, end: (k + 1) * chunk, samples: ADV_SAMPLES, seed: 1 });
+      }
+    };
+    workers[0].postMessage({ type: 'advise-count', reqId: id, enc, round });
+  }
+
+  const pct = x => `${Math.round(x * 100)}%`;
+
+  function optionLabel(o) {
+    if (o.play) {
+      const p = lastPlays[0];
+      return `<b>Play now</b>${p ? ` <span class="muted">${A.HAND_NAMES[p.handType]}, ${fmtBig(p.low)}</span>` : ''}`;
+    }
+    const cards = o.discard.map(i => state.hand[i]).filter(Boolean);
+    return `<b>Discard ${cards.length}</b> <span class="mini">${cards.map(c => Sprites.card(c)).join('')}</span> <span class="muted">${esc(o.why)}</span>`;
+  }
+
+  function typeOdds(o) {
+    const n = Object.values(o.types).reduce((a, b) => a + b, 0) || 1;
+    return Object.entries(o.types).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, v]) => `${A.HAND_NAMES[t]} ${pct(v / n)}`).join(' · ');
+  }
+
+  function renderAdvice() {
+    const box = $('#advice');
+    const mini = $('#advice-mini');
+    if (!box) return;
+    mini.hidden = true;
+    const r = state.round;
+    const inputs = `<div class="round">
+        <label>Chips needed <input type="number" min="0" id="round-need" data-act="round" data-k="need" value="${r.need ?? ''}" placeholder="?"></label>
+        <label>Hands left <input type="number" min="1" id="round-hands" data-act="round" data-k="hands" value="${r.hands}"></label>
+        <label>Discards left <input type="number" min="0" id="round-discards" data-act="round" data-k="discards" value="${r.discards}"></label>
+      </div>`;
+    if (!state.hand.length) { box.innerHTML = inputs + '<div class="muted">Add your hand to get discard advice.</div>'; return; }
+    const res = adv.result;
+    if (adv.running || !res) { box.innerHTML = inputs + `<div class="muted">Simulating draws…</div>`; return; }
+    if (res.error) { box.innerHTML = inputs + `<div class="mult-c">Couldn't simulate: ${esc(res.error)}</div>`; return; }
+
+    const known = isFinite(res.round.need);
+    const sorted = res.results.slice().sort((a, b) => known ? (b.clear - a.clear) || (b.meanNext - a.meanNext) : (b.meanNext - a.meanNext));
+    const play = res.results.find(o => o.play);
+    const top = sorted[0];
+    const nowScore = lastPlays[0] ? lastPlays[0].low[0] * 10 ** lastPlays[0].low[1] : 0;
+    let headline;
+    if (known && nowScore >= res.round.need) headline = `<b>Play now.</b> Your best play scores ${fmtBig(lastPlays[0].low)}, enough to clear the blind.`;
+    else if (!res.round.discards) headline = `<b>Play now.</b> No discards left.`;
+    else if (known) {
+      headline = top.play || top.clear - play.clear < 0.05
+        ? `<b>Play now.</b> Discarding doesn't clearly help (best discard ${pct(sorted.find(o => !o.play)?.clear ?? 0)} vs ${pct(play.clear)} to clear).`
+        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: <b>${pct(top.clear)}</b> to clear the blind, vs ${pct(play.clear)} if you play now.`;
+    } else {
+      headline = top.play || top.meanNext < play.meanNext * 1.1
+        ? `<b>Play now.</b> No discard clearly improves your next hand. Enter chips needed for a clear-the-blind estimate.`
+        : `<b>Discard ${top.discard.length}</b> to ${esc(top.why)}: your next hand averages ${fmtNum(Math.round(top.meanNext))} vs ${fmtNum(Math.round(play.meanNext))} now. Enter chips needed for a clear-the-blind estimate.`;
+    }
+    const shown = sorted.slice(0, 3);
+    if (!shown.includes(play)) shown.push(play);
+    // The same headline under the hand, so the advice is visible without scrolling.
+    mini.hidden = false;
+    mini.innerHTML = `<span class="tag-adv">Advice</span> ${headline} <a href="#plays-panel" class="muted">details</a>`;
+    box.innerHTML = inputs + `<div class="adv-head">${headline}</div>` + shown.map((o, n) => `<div class="adv${o === top ? ' top' : ''}" data-o="${res.results.indexOf(o)}">
+        <div>${optionLabel(o)}<div class="odds muted">next hand: ${typeOdds(o)}</div></div>
+        <div class="adv-num">${known ? `<div class="big">${pct(o.clear)}</div><div class="muted">to clear</div>` : `<div class="big">${fmtNum(Math.round(o.meanNext))}</div><div class="muted">avg next</div>`}</div>
+      </div>`).join('') +
+      `<div class="muted adv-note">Each option: ${res.results[0].samples} simulated draws from ${esc(res.deckFrom)} (${res.deckSize} cards), about ±3%. Assumes you then play your best hand each turn and discard when behind pace. Green Joker, Ramen, Hit the Road, Ride the Bus, and Ice Cream update as you go; other scaling jokers stay fixed.</div>`;
+  }
+
+  function onRoundInput(e) {
+    const k = e.target.dataset.k;
+    const v = e.target.value === '' ? null : Math.max(0, Math.round(+e.target.value));
+    state.round[k] = k === 'need' ? (v || null) : (v ?? state.round[k]);
+    save();
+    scheduleAdvice();
   }
 
   // ---------- formatting ----------
@@ -521,7 +671,7 @@
       row.innerHTML = `<div class="empty-hint">Type ranks to add cards (<kbd>K</kbd> <kbd>Q</kbd> <kbd>7</kbd>), with a suit if you know it (<kbd>K</kbd> <kbd>h</kbd>), or paste a hand like <kbd>AH KC 10D</kbd>. Set suits and modifiers later by clicking a card.</div>`;
       return;
     }
-    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
+    row.innerHTML = state.hand.map((c, i) => `<div class="slot${highlight.includes(i) ? ' hl' : ''}${adv.hover.includes(i) ? ' dis' : ''}${c.uid === entry.uid ? ' cur' : ''}" data-i="${i}" data-uid="${c.uid}" title="${esc(cardText(c))}">${Sprites.card(c)}</div>`).join('');
   }
 
   // ---------- card entry ----------
@@ -1273,6 +1423,7 @@
       if (e.target.closest('#popover') && popFor?.kind === 'joker') return onJokerEditor(e, 'input');
       if (e.target.closest('#levels')) return onLevelInput(e);
       if (e.target.dataset.act === 'opt-hand') { opt.handType = +e.target.value; optimize(); }
+      if (e.target.dataset.act === 'round') onRoundInput(e);
     });
 
     document.addEventListener('keydown', e => {
@@ -1308,6 +1459,10 @@
     }
     document.addEventListener('mouseover', e => {
       if (drag.active) return;
+      const advRow = e.target.closest('.adv');
+      const o = advRow && adv.result?.results?.[+advRow.dataset.o];
+      const dis = o?.discard || [];
+      if (dis.join() !== adv.hover.join()) { adv.hover = dis; renderHand(); }
       const play = e.target.closest('.play');
       const next = (play ? lastPlays[+play.dataset.n] : lastPlays[selectedPlay])?.order || [];
       if (next.join() !== highlight.join()) { highlight = next; renderHand(); }

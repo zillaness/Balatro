@@ -181,7 +181,47 @@ function main() {
   console.log(`${shortcutBad ? 'FAIL' : 'ok  '}  card-order shortcut matches full search on ${subsetsChecked} plays (${shortcutCases.length} hands)`);
   failures += shortcutBad ? 1 : 0;
 
-  const total = CASES.length + ORDER_CASES.length + 1;
+  // Discard advice uses a faster best-play search over plays where every card scores. It must agree
+  // with the full search on nearly every hand.
+  let st = 4242;
+  const xr = () => { st ^= st << 13; st >>>= 0; st ^= st >>> 17; st ^= st << 5; st >>>= 0; return st / 4294967296; };
+  const pick = arr => arr[Math.floor(xr() * arr.length)];
+  let agree = 0;
+  const N = 200;
+  for (let t = 0; t < N; t++) {
+    const c = {
+      hand: Array.from({ length: 8 }, () => pick('A23456789TJQK') + pick('hcds') + pick(MODS)),
+      jokers: Array.from({ length: 1 + Math.floor(xr() * 4) }, () => ({ name: pick(POOL.filter(n => !['Splash'].includes(n)).concat(['Four Fingers', 'Shortcut', 'Smeared Joker', 'Droll Joker', 'Crafty Joker'])), value: 1 }))
+    };
+    const enc = buildState(c, ours, ids, prices);
+    const fast = S.fastBest(enc, enc.jokers);
+    const full = S.evaluateSubsets(enc, enc.jokers).reduce((b, p) => (S.cmpPlay(p, b) > 0 ? p : b));
+    if (sameBig(fast.worst, full.worst)) agree++;
+  }
+  const agreeOk = agree >= N * 0.98;
+  failures += agreeOk ? 0 : 1;
+  console.log(`${agreeOk ? 'ok  ' : 'FAIL'}  fast best play matches full search on ${agree}/${N} random hands (need 98%)`);
+
+  // Discard advice on a real early-game hand (copied from a real save): a 48-point pair with 800 chips
+  // to go and 3 discards should be a discard, by a clear margin.
+  const real = { hand: ['Ks', 'Qh', '9d:lucky', '8d', '7c', '7d', '5c:bonus', '2c'], jokers: ['Credit Card'], levels: { 6: { level: 2 }, 9: { level: 2 } } };
+  const encR = buildState(real, ours, ids, prices);
+  const deckR = [];
+  for (const r of A.RANKS) for (const su of A.SUITS) if (!['Ks', 'Qh', '9d', '8d', '7c', '7d', '5c', '2c'].includes((r === '10' ? 'T' : r) + su)) deckR.push(A.encodeCard({ rank: r, suit: su }, 0));
+  const roundR = { need: 800, hands: 4, discards: 3, handSize: 8 };
+  const advice = S.adviseOptions(encR, deckR, roundR, [{ play: true }, ...S.discardOptions(encR)], { samples: 160 });
+  const playNow = advice.find(o => o.play);
+  const bestDiscard = advice.filter(o => !o.play).sort((a, b) => b.clear - a.clear)[0];
+  const advOk = bestDiscard.clear - playNow.clear >= 0.1;
+  failures += advOk ? 0 : 1;
+  console.log(`${advOk ? 'ok  ' : 'FAIL'}  advice: discard (${bestDiscard.why}) ${Math.round(100 * bestDiscard.clear)}% beats playing a 48-point pair ${Math.round(100 * playNow.clear)}%`);
+
+  // When the best play already clears the blind, playing now always clears.
+  const easy = S.adviseOptions(encR, deckR, { ...roundR, need: 40 }, [{ play: true }], { samples: 20 })[0];
+  failures += easy.clear === 1 ? 0 : 1;
+  console.log(`${easy.clear === 1 ? 'ok  ' : 'FAIL'}  advice: a play that clears the blind clears it every time`);
+
+  const total = CASES.length + ORDER_CASES.length + 4;
   console.log(`\n${total - failures}/${total} passed in ${Date.now() - t0} ms`);
   process.exit(failures ? 1 : 0);
 }

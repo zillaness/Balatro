@@ -1,6 +1,6 @@
 ---
-file: balatro_calculator_prd_v1.4.1.md
-version: 1.4.1
+file: balatro_calculator_prd_v1.5.md
+version: 1.5
 author: Sam Cao
 created: 2026-10-20
 last_updated: 2026-10-21
@@ -13,8 +13,8 @@ ai_update: Update last_updated and version. Rename file to match. Append changel
 **Reference:** https://efhiii.github.io/balatro-calculator/ (source: github.com/EFHIII/balatro-calculator, MIT, last upstream commit 2026-07-09)
 **Rules reference:** https://balatrowiki.org/
 **Repo:** [zillaness/balatro](https://github.com/zillaness/balatro) (moved from `zillaness/games` branch `claude/jolly-heisenberg-qp9tux` on 2026-10-21)
-**Build:** `index.html` (v1.2), served by GitHub Pages
-**Status:** Signed off 2026-10-20 ("proceed"). Steps 1 to 5 done; save import from step 6 done. Next: deck tracker and round flow (rest of step 6), then the discard advisor.
+**Build:** `index.html` (v1.5), live at https://zillaness.github.io/Balatro/
+**Status:** Steps 1 to 5 and 7 done; save import (step 6) verified on a real save. Next: shop compare (R18), then deck presets and the Play/Discard round flow.
 
 ---
 
@@ -66,6 +66,8 @@ The reference calculator computes the right score but makes you work to ask the 
 | D14 | **Save-file import is in v1** (read-only), by drag and drop or a file chooser only. No folder watching and no helper script (decided 2026-10-21 after finding that Chrome and Edge block web pages from AppData and ~/Library). |
 | D15 | **Platforms:** you play on Windows, Mac, and phone/tablet/console. Import covers PC and Mac; manual entry stays first-class, touch included, for the rest. |
 | D16 | **Drag and drop** for jokers and cards. (Added 2026-10-21.) |
+| D17 | **Publishing:** finished work goes straight to `main`, which GitHub Pages serves. (2026-10-21.) |
+| D18 | **Shop compare is in scope** (was out): list the jokers on offer and see which raises your score most. (Added 2026-10-21.) |
 
 ## 4. Success criteria
 
@@ -101,10 +103,10 @@ The reference calculator computes the right score but makes you work to ask the 
 - **R15. Run persistence.** Jokers, levels, deck, and settings saved in the browser across reloads. *Assumption: you didn't flag reloads as a pain point, but this is cheap and a run spans hours. Say so if you'd rather not have it.*
 - **R16. Save-file import.** *Done 2026-10-21.* Drag `save.jkr` onto the page, or choose it with Load save. Fills jokers (editions, counters, sell values), hand, hand levels, deck, Observatory planets, boss and deck flags, and a run strip (blind, chips needed and scored, hands and discards left, money, deck size). Works in every browser, including the claude.ai link. Read-only. Help text gives the Windows and Mac paths.
 - **R17. Drag and drop.** Reorder jokers and hand cards by dragging; drag a joker from the picker straight into a slot; drag anything onto the trash zone to remove it. Mouse drags at once; touch needs a short hold so lists still scroll.
+- **R18. Shop compare.** *Planned.* Pick the jokers on offer; each is tried in your lineup (best order, current hand or sample hands of your main type), replacing your weakest joker if slots are full. Shows the score gain and the tier.
 
 ### Out (v1)
 
-- Shop or buy advice.
 - A live mod bridge (Steamodded / BalatroBot) or screen-capture recognition. Save import covers PC and Mac without either.
 - Multi-round planning (which cards to keep for the next blind).
 - Money-only discard jokers in the advisor's math (Faceless Joker, Mail-In Rebate, Trading Card). Shown as a note, not optimized for.
@@ -143,7 +145,7 @@ Each step lands as its own commit, testable on its own.
 4. **Entry and editing.** *Done 2026-10-21, with step 3.* Keyboard and click card entry (`K` `h` `g` `Enter` = King of Hearts, Glass). Edit-in-place for cards (R8) and jokers (R4), counters in display units. Hover info cards (R3); tap info on touch. Drag and drop (R17).
 5. **Results.** *Done 2026-10-21.* Top-5 plays; click one to outline its cards. Optimize order button with Apply; with no hand, it ranks orders on 3 sample hands of a chosen type. Speed: played-card orders that can't change the score are skipped (matches full search on 17,440 plays), duplicate jokers collapse, work splits across workers. Measured headless: 6 jokers and 8 cards 0.87 s, 7 jokers 1.1 s (all 5,040 orders), 8+ jokers by hill climbing, labelled approximate. Criterion 5 met; the exact limit moved from 6 to 7 jokers.
 6. **Deck, rounds, and import.** *Import done 2026-10-21:* `save_import.js` parses the save without executing it and maps it to state; `tests/save_test.js` covers a synthetic save written with a copy of the game's STR_PACK. **Not yet verified on a real save.** Still to do: deck presets and edits, Play/Discard/New round flow.
-7. **Discard advisor.** Candidate pruning, rollouts in workers, discard-joker effects, ranked display. Exact-calculation tests on small cases.
+7. **Discard advisor.** *Done 2026-10-21.* Options: play now, keep the best play, keep pairs, keep the biggest set, chase each flush (3+ of a suit), chase each straight window (3+ ranks), keep the three highest. 240 seeded rollouts per option, same seeds for every option. Rollouts score only plays where every card scores (matches the full search on 200/200 random hands, 22x faster). On the real save: discard for a flush 89% vs play the pair 66%. Headline under the hand; full table above Best plays.
 8. **Persist and package.** localStorage save. Build script emits `balatro_calculator_v1.0.html`. Headless screenshot pass, README entry.
 
 Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are the discard work and make up about half the build.
@@ -156,7 +158,7 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 | Discard simulation too slow in the browser. | Prune candidates first, run in workers, stop at the time limit, show the estimate refining live. Benchmark in step 7 before tuning. |
 | Appearance tags or tiers are wrong for some jokers. | Both are editable data in one file. The search test set catches the worst misses. |
 | Upstream engine changes its internal API. | Everything goes through `adapter.js`, so updates are a file copy plus an adapter fix. |
-| Field names in a real save differ from what the reader expects (it was built without one). | Unknown jokers and unreadable counters are reported, not guessed. Verify with `node tests/save_test.js save.jkr` on a real file. |
+| Field names in a real save differ from what the reader expects (it was built without one). *Resolved 2026-10-21: verified on a real save (Small Blind, ante 2); every field matched.* | Unknown jokers and unreadable counters are reported, not guessed. Verify with `node tests/save_test.js save.jkr` on a real file. |
 | The game may only write `save.jkr` between rounds, not after each draw. | Unverified. If so, import still fills jokers, levels, and deck; you type the hand. Test with a real save in step 6. |
 | Save layout changes between game versions. | Parser reads by field name, ignores unknown fields, and reports what it couldn't map instead of guessing. |
 | Representative hands give an order that doesn't fit your real hand (Photograph, Hanging Chad, and other card-dependent jokers). | Standalone mode shows how consistent the order is across the sample hands and flags card-dependent jokers. |
@@ -170,3 +172,4 @@ Steps 1 to 5 replace the reference with a better interface. Steps 6 and 7 are th
 - v1.3.1 (2026-10-21): Step 5 done with measured timings; exact order search now covers 7 jokers.
 - v1.4 (2026-10-21): D14 and R16 changed to drag-and-drop import after confirming Chrome blocks AppData; import built; browser file-access constraint and real-save risk added.
 - v1.4.1 (2026-10-21): Moved to zillaness/balatro; paths updated (`vendor/`, `tests/`, build writes `index.html`).
+- v1.5 (2026-10-21): Discard advisor done and measured; save import verified on a real save; D17 publishing to main; D18 and R18 shop compare moved into scope.
