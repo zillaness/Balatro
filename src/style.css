@@ -1,6 +1,6 @@
 /**
  * file: style.css
- * version: 1.2.2
+ * version: 1.2.3
  * author: Sam Cao
  * created: 2026-10-21
  * last_updated: 2026-10-22
@@ -480,6 +480,11 @@ button.collapse { padding: 3px 9px; min-width: 34px; }
 .path { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .path code { user-select: all; }
 #popover.wide { width: min(600px, calc(100vw - 32px)); }
+#popover h3 { margin: 12px 0 2px; font-size: 19px; }
+.steps { margin: 4px 0 8px; padding-left: 24px; }
+.steps li { margin: 6px 0; line-height: 1.5; }
+/* No underline: the pixel font draws it as underscores between words. */
+button.linkish { background: none; box-shadow: none; padding: 0; color: #5fc4ff; }
 button.copy { flex: none; padding: 2px 10px; }
 .shop-num { text-align: right; }
 .shop-num .big { font-size: 24px; }
@@ -670,4 +675,5 @@ footer a { color: var(--muted); }
  * v1.2 (2026-10-21): Sticker tags in the shop; minimized entry hides the buttons but keeps the typing box.
  * v1.2.1 (2026-10-21): Free (skip tag) label.
  * v1.2.2 (2026-10-22): Save path rows with Copy buttons; wider help popover.
+ * v1.2.3 (2026-10-22): Numbered save-help steps and a link to the other system's steps.
  */

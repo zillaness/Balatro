@@ -1,6 +1,6 @@
 /**
  * @file app.js
- * @version 1.2.2
+ * @version 1.2.3
  * @author Sam Cao
  * @created 2026-10-21
  * @lastUpdated 2026-10-22
@@ -24,12 +24,28 @@ K Q 7 7   no suit yet; click a card later to set it
 KH:glass+red 7S:poly   modifiers after a colon, joined with +
 Or type anywhere on the page: K h g Enter = King of Hearts, Glass.`;
 
-  // Hover text for every save button and the drop box. AppData and ~/Library are hidden folders, which is why people can't find them.
-  const SAVE_WHERE_TEXT = `save.jkr is usually in:
-Windows: C:\\Users\\<you>\\AppData\\Roaming\\Balatro\\1
-  AppData is hidden. Paste %AppData%\\Balatro\\1 into File Explorer's address bar.
-Mac: ~/Library/Application Support/Balatro/1
-  Library is hidden. In Finder: Go, Go to Folder.
+  // Which computer this is, so save help shows only its steps: 'win', 'mac', or null (anything else: both).
+  // iPads report themselves as Macs, so a touch "Mac" counts as neither.
+  function detectOS() {
+    const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
+    if (p.includes('win')) return 'win';
+    if (p.includes('mac') && !(navigator.maxTouchPoints > 1)) return 'mac';
+    return null;
+  }
+  const SAVE_OS = detectOS();
+
+  // Hover text for every save button and the drop box. AppData and ~/Library are hidden folders, which is why people
+  // can't find them; %AppData% and ~ fill in the username, so nobody has to type theirs.
+  const SAVE_TIPS = {
+    win: `Windows: press Win+R, paste %AppData%\\Balatro\\1, and press Enter.
+  %AppData% fills in your username: it's C:\\Users\\<your username>\\AppData\\Roaming.
+  AppData is hidden, so you won't find it by clicking through your user folder.`,
+    mac: `Mac: open Finder, press Shift+Cmd+G, paste ~/Library/Application Support/Balatro/1, and press Return.
+  ~ is your home folder (/Users/<your username>).
+  Library is hidden, so you won't find it by clicking through your home folder.`
+  };
+  const SAVE_WHERE_TEXT = `save.jkr is in your Balatro profile folder.
+${SAVE_OS ? SAVE_TIPS[SAVE_OS] : `${SAVE_TIPS.win}\n${SAVE_TIPS.mac}`}
 (1 is your profile number.)`;
   const SAVE_WHERE = esc(SAVE_WHERE_TEXT);
 
@@ -39,7 +55,7 @@ Mac: ~/Library/Application Support/Balatro/1
     win: { folder: '%AppData%\\Balatro\\1', file: '%AppData%\\Balatro\\1\\save.jkr', where: 'Press Win+R (or click File Explorer\'s address bar), paste, and press Enter.' },
     mac: { folder: '~/Library/Application Support/Balatro/1', file: '~/Library/Application Support/Balatro/1/save.jkr', where: 'In Finder press Shift+Cmd+G, paste, and press Return.' }
   };
-  const ON_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
+  const ON_MAC = SAVE_OS === 'mac';
   const copyBtn = (text, label = 'Copy') => `<button class="copy" data-act="copy" data-text="${esc(text)}" title="Copy ${esc(text)}">${label}</button>`;
   // Long paths wrap only after a slash, never mid-name.
   const pathRow = text => `<span class="path"><code>${esc(text).replace(/([\\/])/g, '$1<wbr>')}</code>${copyBtn(text)}</span>`;
@@ -504,20 +520,42 @@ Mac: ~/Library/Application Support/Balatro/1
     }
   }
 
+  // Step-by-step help for one system: the key to press comes first, then the path to paste (with Copy).
+  const SAVE_STEPS = {
+    win: () => `<h3>Windows</h3>
+      <ol class="steps">
+        <li>Press <kbd>Win</kbd>+<kbd>R</kbd> to open Run.</li>
+        <li>Paste this folder: ${pathRow(SAVE_PATHS.win.folder)}</li>
+        <li>Press <kbd>Enter</kbd>. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.</li>
+      </ol>
+      <p>Or click <b>Choose save.jkr</b> and paste this into the File name box: ${pathRow(SAVE_PATHS.win.file)}</p>
+      <p class="muted">No need to type your username: <code>%AppData%</code> fills it in. The full path is
+        <code>C:\\Users\\<i>your username</i>\\AppData\\Roaming\\Balatro\\1\\save.jkr</code>, and AppData is a hidden folder,
+        so it won't show up if you click through your user folder.</p>`,
+    mac: () => `<h3>Mac</h3>
+      <ol class="steps">
+        <li>Open <b>Finder</b> and press <kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd> (or use Finder's Go menu, Go to Folder).</li>
+        <li>Paste this folder: ${pathRow(SAVE_PATHS.mac.folder)}</li>
+        <li>Press <kbd>Return</kbd>, then drag <b>save.jkr</b> onto this page.</li>
+      </ol>
+      <p>Or click <b>Choose save.jkr</b>, press <kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd> in the file picker, and paste: ${pathRow(SAVE_PATHS.mac.file)}</p>
+      <p class="muted">No need to type your username: <code>~</code> is your home folder (<code>/Users/<i>your username</i></code>).
+        Library is a hidden folder, so it won't show up if you click through your home folder.</p>`
+  };
+  // Detected system first; the other is one click away (or both, when the system isn't Windows or Mac).
+  let helpOS = SAVE_OS;
+
   function saveHelpHtml() {
+    const os = helpOS;
+    const other = os === 'win' ? 'mac' : os === 'mac' ? 'win' : null;
+    const steps = os ? SAVE_STEPS[os]() : SAVE_STEPS.win() + SAVE_STEPS.mac();
+    const pin = os === 'win' ? 'Quick Access' : os === 'mac' ? 'the Finder sidebar' : 'Quick Access (Windows) or the Finder sidebar (Mac)';
     return `<h2>Load your run from save.jkr</h2>
       <p>Balatro saves your current run as <b>save.jkr</b> in your profile folder. The calculator only reads it.</p>
-      <p><b>Windows:</b> usually <code>C:\\Users\\<i>you</i>\\AppData\\Roaming\\Balatro\\1\\save.jkr</code>.
-        <b>AppData is a hidden folder</b>, so it won't show up if you click through your user folder.
-        Press <kbd>Win</kbd>+<kbd>R</kbd>, paste the folder, and press Enter. File Explorer opens on it; drag <b>save.jkr</b> onto this page.
-        Or click Choose save.jkr and paste the file path into the File name box.
+      ${steps}
+      ${other ? `<p><button class="linkish" data-act="help-os" data-os="${other}">${other === 'mac' ? 'On a Mac? Show the Mac steps' : 'On Windows? Show the Windows steps'}</button></p>` : ''}
+      <p>Pin the folder in ${pin} so it's one click next time, and load the save again after each hand to pick up new cards.
         (<code>1</code> is your profile; use 2 or 3 if you play on another.)</p>
-      <div class="paths"><span class="muted">Folder</span>${pathRow(SAVE_PATHS.win.folder)}<span class="muted">File</span>${pathRow(SAVE_PATHS.win.file)}</div>
-      <p><b>Mac:</b> usually <code>~/Library/Application Support/Balatro/1/save.jkr</code>. <b>Library is hidden in Finder too</b>:
-        choose Go, Go to Folder (<kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd>) and paste the folder. The same keys work in the file picker.</p>
-      <div class="paths"><span class="muted">Folder</span>${pathRow(SAVE_PATHS.mac.folder)}<span class="muted">File</span>${pathRow(SAVE_PATHS.mac.file)}</div>
-      <p>Drag <b>save.jkr</b> onto this page, or choose it below. Pin the folder in Quick Access (Windows) or the Finder sidebar (Mac) so it's one click next time.
-        Load it again after each hand to pick up new cards.</p>
       <p class="muted">Phone, Switch, and console saves can't be opened from a browser.</p>
       <div class="actions"><span class="spacer"></span><button data-act="close">Close</button><button class="primary" data-act="load-save">Choose save.jkr</button></div>`;
   }
@@ -1909,12 +1947,13 @@ Mac: ~/Library/Application Support/Balatro/1
         else if (act === 'pick-add') { pickerAdd(+actEl.dataset.id); closePopover(); closePicker(); }
         else if (act === 'load-save') { closePopover(); $('#save-file').click(); }
         else if (act === 'copy') onCopy(actEl);
+        else if (act === 'help-os') { helpOS = actEl.dataset.os; $('#popover').innerHTML = saveHelpHtml(); }
         else if (act === 'close') closePopover();
         return;
       }
       if (act === 'load-save') { closePopover(); $('#save-file').click(); return; }
       if (act === 'copy') { onCopy(actEl); return; }
-      if (act === 'save-help') { openPopover(saveHelpHtml(), actEl, true); popFor = { kind: 'help' }; return; }
+      if (act === 'save-help') { helpOS = SAVE_OS; openPopover(saveHelpHtml(), actEl, true); popFor = { kind: 'help' }; return; }
       if (act === 'run-close') { state.run = null; save(); renderRun(); return; }
       if (act === 'open-picker') return openPicker();
       if (act === 'shop-add') return openPicker(true);
@@ -2098,4 +2137,6 @@ Mac: ~/Library/Application Support/Balatro/1
  * v1.2.1 (2026-10-21): Fixes from a real shop save: free cards are affordable in debt and add no debt notes; Credit Card (while in
  *   debt) and Negative jokers are never the one to sell; Free (skip tag) label; Shop and -$3 in the run strip.
  * v1.2.2 (2026-10-22): Copy buttons for the save folder and file paths (drop box and Where is it?), with a clipboard fallback.
+ * v1.2.3 (2026-10-22): Save help detects Windows or Mac and shows numbered steps for it (Win+R or Finder first, then the path),
+ *   says %AppData% and ~ fill in your username, and links to the other system's steps.
  */

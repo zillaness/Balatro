@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.8.2';
+const VERSION = '1.8.3';
 const CREATED = '2026-10-21';
 const UPDATED = '2026-10-22';
 const CHANGELOG = [
@@ -33,7 +33,8 @@ const CHANGELOG = [
   ['1.7', '2026-10-21', 'Shop: what to buy. Rates shop jokers (every slot, or in place of each joker when slots are full) and planets by score gain on plays dealt from your deck for the hands you play most. Reads offers from a save taken in the shop, or add them with + Joker and + Planet. Shows cost against your money; vouchers and packs listed unrated.'],
   ['1.8', '2026-10-21', 'Shop advice counts Credit Card debt, lost interest, and Bull and Bootstraps shrinking when you spend; reads Eternal, Rental, and Perishable stickers (never suggests selling an Eternal joker); prices typed-in offers with your voucher discount and Astronomer; rates money jokers in dollars per round with payback; scores Lucky cards and other chance effects at their average. The Buttons toggle now hides only the rank, suit, and modifier buttons, leaving the typing box, its how-to, and a hover tip.'],
   ['1.8.1', '2026-10-21', 'Fixes found with a real shop save (Coupon Tag applied, $3 in debt): free cards count as affordable in debt and add no debt notes; Credit Card is never suggested for selling while you are in debt, and Negative jokers never are (selling one frees no slot). Free cards are labelled Free (skip tag); a skip tag still pending in the save is warned about. The run strip says Shop and shows -$3 instead of $-3.'],
-  ['1.8.2', '2026-10-22', 'Copy buttons for the save location: the drop box copies the folder for your system, and Where is it? has Copy next to the Windows and Mac folder and file paths, with a note on where to paste. Works where the clipboard is blocked (embedded pages) through a fallback.']
+  ['1.8.2', '2026-10-22', 'Copy buttons for the save location: the drop box copies the folder for your system, and Where is it? has Copy next to the Windows and Mac folder and file paths, with a note on where to paste. Works where the clipboard is blocked (embedded pages) through a fallback.'],
+  ['1.8.3', '2026-10-22', 'Save help detects Windows or Mac and shows only its steps, numbered: Win+R (or Finder and Shift+Cmd+G) first, then the folder to paste. Explains that %AppData% and ~ fill in your username, with the full path shown as C:\\Users\\<your username>\\... Links to the other system; hover text matches.']
 ];
 
 const ROOT = __dirname;

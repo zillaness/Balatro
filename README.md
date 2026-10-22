@@ -1,6 +1,6 @@
 ---
 file: README.md
-version: 1.4.1
+version: 1.4.2
 author: Sam Cao
 created: 2026-10-21
 last_updated: 2026-10-22
@@ -32,10 +32,10 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 
 | | |
 | --- | --- |
-| Windows | usually `C:\Users\<you>\AppData\Roaming\Balatro\1`. AppData is hidden, so paste `%AppData%\Balatro\1` into File Explorer's address bar |
-| Mac | usually `~/Library/Application Support/Balatro/1`. Library is hidden, so use Finder, Go, Go to Folder |
+| Windows | press Win+R, paste `%AppData%\Balatro\1`, press Enter. `%AppData%` fills in your username (`C:\Users\<your username>\AppData\Roaming`); AppData is hidden, so clicking through folders won't find it |
+| Mac | open Finder, press Shift+Cmd+G, paste `~/Library/Application Support/Balatro/1`, press Return. `~` is your home folder; Library is hidden |
 
-`1` is the profile number. On the page, **Copy folder path** in the drop box copies the folder for your system, and **Where is it?** has Copy buttons for both folders and files; hover any save button for the same paths. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
+`1` is the profile number. The page detects Windows or Mac and shows just those steps. On the page, **Copy folder path** in the drop box copies the folder for your system, and **Where is it?** has Copy buttons for both folders and files; hover any save button for the same paths. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
 
 ## Build and test
 
@@ -70,3 +70,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 - v1.3 (2026-10-21): What to buy (shop panel).
 - v1.4 (2026-10-21): Shop money rules and stickers; entry buttons fold away and leave the typing box.
 - v1.4.1 (2026-10-22): Copy buttons for the save paths.
+- v1.4.2 (2026-10-22): Save steps lead with Win+R or Finder; username note; system detection.

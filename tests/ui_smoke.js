@@ -84,8 +84,10 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.keyboard.press('Escape');
   check((await page.$$eval('#hand-row .slot', els => els[3].title)) === '4♣ steel', 'edit card in place', await page.$$eval('#hand-row .slot', els => els[3].title));
 
-  // Drag a card onto the trash.
-  const c = await (await page.$$('#hand-row .slot'))[4].boundingBox();
+  // Drag a card onto the trash. Discard advice redraws the hand when it finishes, so wait for it and find the card
+  // afresh (a held element handle can go stale on a slow machine).
+  await page.waitForFunction(() => !/Simulating/.test(document.querySelector('#advice-body')?.innerText || ''), null, { timeout: 30000 });
+  const c = await page.locator('#hand-row .slot').nth(4).boundingBox();
   await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
   await page.mouse.down();
   await page.mouse.move(c.x + 40, c.y + 40, { steps: 3 });
@@ -161,7 +163,7 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   // A visible drop box for save.jkr before any save is loaded.
   check(/Drop save\.jkr here/.test(await page.$eval('#run-strip', e => e.innerText)), 'save drop box shows on the page');
   const tips = await page.$$eval('#run-strip, #run-strip [data-act=load-save], header [data-act=load-save], header [data-act=save-help]', els => els.map(e => e.title));
-  check(tips.every(t => /AppData\\Roaming\\Balatro\\1/.test(t) && /AppData is hidden/.test(t) && /Library is hidden/.test(t)), 'save buttons and drop box say where save.jkr usually is, and that the folders are hidden', tips[0]);
+  check(tips.every(t => /%AppData%\\Balatro\\1/.test(t) && /your username/.test(t) && /AppData is hidden/.test(t) && /Library is hidden/.test(t)), 'save buttons and drop box say where save.jkr is, that the username fills itself in, and that the folders are hidden', tips[0]);
 
   // Copy buttons: the drop box copies the folder for this OS; the help has folder and file for Windows and Mac.
   await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
@@ -173,6 +175,30 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   await page.keyboard.press('Escape');
   const copied = await page.evaluate(() => window.__copied);
   check(copied.join(' | ') === '%AppData%\\Balatro\\1 | %AppData%\\Balatro\\1 | %AppData%\\Balatro\\1\\save.jkr | ~/Library/Application Support/Balatro/1 | ~/Library/Application Support/Balatro/1/save.jkr', 'Copy buttons copy the save folder and file paths', copied.join(' | '));
+
+  // Detected system: Windows shows only Windows steps, Win+R first and the username explained; Mac shows Finder steps;
+  // each links to the other. (This test machine is Linux, which shows both, as checked above.)
+  for (const [platform, os] of [['Win32', 'win'], ['MacIntel', 'mac']]) {
+    const osPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    osPage.on('pageerror', e => errors.push(`${os}: ${e.message}`));
+    await osPage.addInitScript(p => { Object.defineProperty(navigator, 'platform', { get: () => p }); Object.defineProperty(navigator, 'userAgentData', { get: () => undefined }); }, platform);
+    await osPage.goto(FILE);
+    await osPage.click('header [data-act=save-help]');
+    const help = await osPage.$eval('#popover', e => e.innerText);
+    const tip = await osPage.$eval('header [data-act=save-help]', e => e.title);
+    const drop = await osPage.$eval('#run-strip [data-act=copy]', e => e.dataset.text);
+    if (os === 'win') {
+      check(/Press Win\s*\+\s*R to open Run\.\s*Paste this folder/.test(help) && help.indexOf('Win') < help.indexOf('%AppData%') && /your username/.test(help) && !/Finder/.test(help.split('On a Mac?')[0]),
+        'Windows: Win+R comes before the folder, the username is explained, no Mac steps', help.split('\n').slice(0, 6).join(' / '));
+      check(/your username/.test(tip) && !/Finder/.test(tip) && drop === '%AppData%\\Balatro\\1', 'Windows: hover text and drop box copy are Windows only', tip.split('\n')[1]);
+      await osPage.click('#popover [data-act=help-os]');
+      check(/Open Finder/.test(await osPage.$eval('#popover', e => e.innerText)), 'Windows help links to the Mac steps');
+    } else {
+      check(/Open Finder and press Shift\s*\+\s*Cmd\s*\+\s*G/.test(help) && /\/Users\/your username/.test(help) && !/Win\s*\+\s*R/.test(help), 'Mac: Finder steps first, the username explained, no Windows steps', help.split('\n').slice(0, 6).join(' / '));
+      check(/Finder/.test(tip) && !/Win\+R/.test(tip) && drop === '~/Library/Application Support/Balatro/1', 'Mac: hover text and drop box copy are Mac only', tip.split('\n')[1]);
+    }
+    await osPage.close();
+  }
 
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');
@@ -329,5 +355,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
  * v1.0 (2026-10-21): Search, keyboard entry, scores, drag reorder, counter editing, card editing, trash, picker drag, levels, persistence, phone width.
  * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove);
  *   Credit Card debt, interest, stickers, discount, money jokers; entry buttons minimize and leave the typing box;
- *   free (couponed) cards while in debt; Copy buttons for the save paths.
+ *   free (couponed) cards while in debt; Copy buttons for the save paths; Windows and Mac save help; trash drag waits for advice.
  */
