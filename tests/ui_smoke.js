@@ -3,7 +3,7 @@
  * @version 1.1
  * @author Sam Cao
  * @created 2026-10-21
- * @lastUpdated 2026-10-21
+ * @lastUpdated 2026-10-22
  * @description Drives the built calculator in headless Chromium: search, keyboard card entry, counter editing, drag and drop, phone width.
  * @aiUpdate Update @lastUpdated and @version. Append changelog at bottom.
  */
@@ -163,6 +163,17 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
   const tips = await page.$$eval('#run-strip, #run-strip [data-act=load-save], header [data-act=load-save], header [data-act=save-help]', els => els.map(e => e.title));
   check(tips.every(t => /AppData\\Roaming\\Balatro\\1/.test(t) && /AppData is hidden/.test(t) && /Library is hidden/.test(t)), 'save buttons and drop box say where save.jkr usually is, and that the folders are hidden', tips[0]);
 
+  // Copy buttons: the drop box copies the folder for this OS; the help has folder and file for Windows and Mac.
+  await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
+  await page.click('#run-strip [data-act=copy]');
+  check(/Copied %AppData%\\Balatro\\1\. Press Win\+R/.test(await page.$eval('#toast', e => e.innerText)), 'copy says what was copied and where to paste it', await page.$eval('#toast', e => e.innerText));
+  await page.click('header [data-act=save-help]');
+  const helpCopies = await page.$$('#popover [data-act=copy]');
+  for (const b of helpCopies) await b.click();
+  await page.keyboard.press('Escape');
+  const copied = await page.evaluate(() => window.__copied);
+  check(copied.join(' | ') === '%AppData%\\Balatro\\1 | %AppData%\\Balatro\\1 | %AppData%\\Balatro\\1\\save.jkr | ~/Library/Application Support/Balatro/1 | ~/Library/Application Support/Balatro/1/save.jkr', 'Copy buttons copy the save folder and file paths', copied.join(' | '));
+
   // Save import: choose a save.jkr (same path as drag and drop).
   const os = require('os');
   const { saveBytes, SHOP_SAVE, FREE_SAVE } = require('./save_fixture');
@@ -318,5 +329,5 @@ const check = (ok, what, got) => { if (!ok) failures++; console.log(`${ok ? 'ok 
  * v1.0 (2026-10-21): Search, keyboard entry, scores, drag reorder, counter editing, card editing, trash, picker drag, levels, persistence, phone width.
  * v1.1 (2026-10-21): Save-location tooltips; shop advice from a save taken in the shop (ranking, full slots, typed-in offers, remove);
  *   Credit Card debt, interest, stickers, discount, money jokers; entry buttons minimize and leave the typing box;
- *   free (couponed) cards while in debt.
+ *   free (couponed) cards while in debt; Copy buttons for the save paths.
  */

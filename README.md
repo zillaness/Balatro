@@ -1,9 +1,9 @@
 ---
 file: README.md
-version: 1.4
+version: 1.4.1
 author: Sam Cao
 created: 2026-10-21
-last_updated: 2026-10-21
+last_updated: 2026-10-22
 description: What the Balatro Calculator does, how to use and build it, and who made the parts it is built from.
 ai_update: Update last_updated and version. Append changelog at bottom.
 ---
@@ -35,7 +35,7 @@ A score calculator for [Balatro](https://www.playbalatro.com/). Enter your hand 
 | Windows | usually `C:\Users\<you>\AppData\Roaming\Balatro\1`. AppData is hidden, so paste `%AppData%\Balatro\1` into File Explorer's address bar |
 | Mac | usually `~/Library/Application Support/Balatro/1`. Library is hidden, so use Finder, Go, Go to Folder |
 
-`1` is the profile number. Hover any save button on the page for the same paths. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
+`1` is the profile number. On the page, **Copy folder path** in the drop box copies the folder for your system, and **Where is it?** has Copy buttons for both folders and files; hover any save button for the same paths. Browsers can't watch these folders for changes (Chrome blocks web pages from AppData and `~/Library`), so drag the file in again after each hand.
 
 ## Build and test
 
@@ -69,3 +69,4 @@ This is a fan project, not affiliated with LocalThunk or Playstack.
 - v1.2.1 (2026-10-21): Typical save paths, and that AppData and Library are hidden folders.
 - v1.3 (2026-10-21): What to buy (shop panel).
 - v1.4 (2026-10-21): Shop money rules and stickers; entry buttons fold away and leave the typing box.
+- v1.4.1 (2026-10-22): Copy buttons for the save paths.

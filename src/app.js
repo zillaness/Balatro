@@ -1,9 +1,9 @@
 /**
  * @file app.js
- * @version 1.2.1
+ * @version 1.2.2
  * @author Sam Cao
  * @created 2026-10-21
- * @lastUpdated 2026-10-21
+ * @lastUpdated 2026-10-22
  * @description Calculator UI: state, rendering, card entry, joker and card editors, picker, hand levels, drag and drop, save import, discard and purchase advice, worker calls.
  * @aiUpdate Update @lastUpdated and @version. Append changelog at bottom.
  */
@@ -32,6 +32,17 @@ Mac: ~/Library/Application Support/Balatro/1
   Library is hidden. In Finder: Go, Go to Folder.
 (1 is your profile number.)`;
   const SAVE_WHERE = esc(SAVE_WHERE_TEXT);
+
+  // Paths to paste: the folder (Win+R, File Explorer's address bar, Finder's Go to Folder) and the file itself (the
+  // file picker's name box). The Copy buttons put these on the clipboard.
+  const SAVE_PATHS = {
+    win: { folder: '%AppData%\\Balatro\\1', file: '%AppData%\\Balatro\\1\\save.jkr', where: 'Press Win+R (or click File Explorer\'s address bar), paste, and press Enter.' },
+    mac: { folder: '~/Library/Application Support/Balatro/1', file: '~/Library/Application Support/Balatro/1/save.jkr', where: 'In Finder press Shift+Cmd+G, paste, and press Return.' }
+  };
+  const ON_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
+  const copyBtn = (text, label = 'Copy') => `<button class="copy" data-act="copy" data-text="${esc(text)}" title="Copy ${esc(text)}">${label}</button>`;
+  // Long paths wrap only after a slash, never mid-name.
+  const pathRow = text => `<span class="path"><code>${esc(text).replace(/([\\/])/g, '$1<wbr>')}</code>${copyBtn(text)}</span>`;
 
   const SUIT_SYMBOL = { h: '♥', c: '♣', d: '♦', s: '♠' };
   const RANK_KEYS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
@@ -440,6 +451,7 @@ Mac: ~/Library/Application Support/Balatro/1
         <span><b>Drop save.jkr here</b> to load your run <span class="muted">(jokers, hand, levels, deck, blind)</span></span>
         <span class="spacer"></span>
         <button class="blue" data-act="load-save" title="${SAVE_WHERE}">Choose save.jkr</button>
+        ${copyBtn(SAVE_PATHS[ON_MAC ? 'mac' : 'win'].folder, 'Copy folder path')}
         <button data-act="save-help" title="${SAVE_WHERE}">Where is it?</button>`;
       return;
     }
@@ -461,16 +473,49 @@ Mac: ~/Library/Application Support/Balatro/1
       <span class="spacer"></span><span class="muted drop-hint">drop a newer save here</span><button class="blue" data-act="load-save" title="Opens the file picker. Windows reopens the Balatro folder you used last, so double-click save.jkr. (Browsers can't re-read AppData by themselves.)&#10;&#10;${SAVE_WHERE}">Reload save</button><button data-act="run-close" title="Forget this save">✕</button>`;
   }
 
+  // Clipboard API first; pages embedded without clipboard permission fall back to a hidden text box and copy.
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) { /* blocked or unavailable: fall back */ }
+    const box = document.createElement('textarea');
+    box.value = text;
+    box.setAttribute('readonly', '');
+    box.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(box);
+    box.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { /* not allowed */ }
+    box.remove();
+    return ok;
+  }
+
+  async function onCopy(btn) {
+    const text = btn.dataset.text;
+    const ok = await copyText(text);
+    const os = SAVE_PATHS.mac.folder === text || SAVE_PATHS.mac.file === text ? 'mac' : 'win';
+    const isFolder = text === SAVE_PATHS[os].folder;
+    toast(ok ? `Copied ${text}. ${isFolder ? SAVE_PATHS[os].where : 'Paste it into the file picker\'s File name box.'}` : `Couldn't copy here. Select the path and press ${ON_MAC ? 'Cmd' : 'Ctrl'}+C.`);
+    if (ok) {
+      const label = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(() => { if (btn.isConnected) btn.textContent = label; }, 1500);
+    }
+  }
+
   function saveHelpHtml() {
     return `<h2>Load your run from save.jkr</h2>
       <p>Balatro saves your current run as <b>save.jkr</b> in your profile folder. The calculator only reads it.</p>
       <p><b>Windows:</b> usually <code>C:\\Users\\<i>you</i>\\AppData\\Roaming\\Balatro\\1\\save.jkr</code>.
         <b>AppData is a hidden folder</b>, so it won't show up if you click through your user folder.
-        Press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%AppData%\\Balatro\\1</code>, and press Enter. File Explorer opens on the folder; drag <b>save.jkr</b> onto this page.
-        Or click Choose save.jkr and paste <code>%AppData%\\Balatro\\1\\save.jkr</code> into the File name box.
+        Press <kbd>Win</kbd>+<kbd>R</kbd>, paste the folder, and press Enter. File Explorer opens on it; drag <b>save.jkr</b> onto this page.
+        Or click Choose save.jkr and paste the file path into the File name box.
         (<code>1</code> is your profile; use 2 or 3 if you play on another.)</p>
+      <div class="paths"><span class="muted">Folder</span>${pathRow(SAVE_PATHS.win.folder)}<span class="muted">File</span>${pathRow(SAVE_PATHS.win.file)}</div>
       <p><b>Mac:</b> usually <code>~/Library/Application Support/Balatro/1/save.jkr</code>. <b>Library is hidden in Finder too</b>:
-        choose Go, Go to Folder (<kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd>), and paste <code>~/Library/Application Support/Balatro/1</code>.</p>
+        choose Go, Go to Folder (<kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>G</kbd>) and paste the folder. The same keys work in the file picker.</p>
+      <div class="paths"><span class="muted">Folder</span>${pathRow(SAVE_PATHS.mac.folder)}<span class="muted">File</span>${pathRow(SAVE_PATHS.mac.file)}</div>
       <p>Drag <b>save.jkr</b> onto this page, or choose it below. Pin the folder in Quick Access (Windows) or the Finder sidebar (Mac) so it's one click next time.
         Load it again after each hand to pick up new cards.</p>
       <p class="muted">Phone, Switch, and console saves can't be opened from a browser.</p>
@@ -1459,9 +1504,10 @@ Mac: ~/Library/Application Support/Balatro/1
 
   let popFor = null;
 
-  function openPopover(html, anchor) {
+  function openPopover(html, anchor, wide = false) {
     hideInfo();
     const pop = $('#popover');
+    pop.classList.toggle('wide', wide);
     pop.innerHTML = html;
     pop.hidden = false;
     $('#scrim').hidden = false;
@@ -1862,11 +1908,13 @@ Mac: ~/Library/Application Support/Balatro/1
         else if (popFor?.kind === 'card') onCardEditor(e);
         else if (act === 'pick-add') { pickerAdd(+actEl.dataset.id); closePopover(); closePicker(); }
         else if (act === 'load-save') { closePopover(); $('#save-file').click(); }
+        else if (act === 'copy') onCopy(actEl);
         else if (act === 'close') closePopover();
         return;
       }
       if (act === 'load-save') { closePopover(); $('#save-file').click(); return; }
-      if (act === 'save-help') { openPopover(saveHelpHtml(), actEl); popFor = { kind: 'help' }; return; }
+      if (act === 'copy') { onCopy(actEl); return; }
+      if (act === 'save-help') { openPopover(saveHelpHtml(), actEl, true); popFor = { kind: 'help' }; return; }
       if (act === 'run-close') { state.run = null; save(); renderRun(); return; }
       if (act === 'open-picker') return openPicker();
       if (act === 'shop-add') return openPicker(true);
@@ -2049,4 +2097,5 @@ Mac: ~/Library/Application Support/Balatro/1
  *   jokers per round. Entry toggle hides only the buttons; typing box keeps a how-to tooltip.
  * v1.2.1 (2026-10-21): Fixes from a real shop save: free cards are affordable in debt and add no debt notes; Credit Card (while in
  *   debt) and Negative jokers are never the one to sell; Free (skip tag) label; Shop and -$3 in the run strip.
+ * v1.2.2 (2026-10-22): Copy buttons for the save folder and file paths (drop box and Where is it?), with a clipboard fallback.
  */
